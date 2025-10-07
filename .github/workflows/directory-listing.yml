@@ -42,6 +42,9 @@ jobs:
           
           echo "Contents of releases directory:"
           ls -la releases/
+          
+          # Remove any artifact.tar files that might have been downloaded
+          rm -f releases/artifact.tar releases/*.tar
 
       - name: Generate Directory Listings
         uses: jayanta525/github-pages-directory-listing@v4.0.0
