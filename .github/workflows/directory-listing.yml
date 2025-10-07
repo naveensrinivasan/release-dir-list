@@ -29,12 +29,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release list --repo ${{ github.repository }} --limit 100 --json tagName,assets | \
-          jq -r '.[] | .tagName as $tag | .assets[] | "\($tag),\(.name),\(.url)"' | \
-          while IFS=',' read -r tag name url; do
-            echo "Downloading $name from release $tag..."
-            gh release download "$tag" --pattern "$name" --dir releases --repo ${{ github.repository }} || true
+          echo "Listing all releases..."
+          gh release list --repo ${{ github.repository }} --limit 100
+          
+          echo "Fetching release details..."
+          releases=$(gh release list --repo ${{ github.repository }} --limit 100 --json tagName --jq '.[].tagName')
+          
+          for tag in $releases; do
+            echo "Downloading assets from release $tag..."
+            gh release download "$tag" --dir releases --repo ${{ github.repository }} || echo "No assets found for $tag"
           done
+          
+          echo "Contents of releases directory:"
+          ls -la releases/
 
       - name: Generate Directory Listings
         uses: jayanta525/github-pages-directory-listing@v4.0.0
