@@ -22,15 +22,29 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Create releases directory
+        run: mkdir -p releases
+
+      - name: Fetch all releases and download assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --repo ${{ github.repository }} --limit 100 --json tagName,assets | \
+          jq -r '.[] | .tagName as $tag | .assets[] | "\($tag),\(.name),\(.url)"' | \
+          while IFS=',' read -r tag name url; do
+            echo "Downloading $name from release $tag..."
+            gh release download "$tag" --pattern "$name" --dir releases --repo ${{ github.repository }} || true
+          done
+
       - name: Generate Directory Listings
         uses: jayanta525/github-pages-directory-listing@v4.0.0
         with:
-          FOLDER: '.'  # Root directory
+          FOLDER: 'releases'
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'  # Upload the entire repository
+          path: 'releases'
 
   deploy:
     needs: build
