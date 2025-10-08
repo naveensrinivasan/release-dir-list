@@ -100,68 +100,68 @@ jobs:
           
           # Generate root index.html for each OS
           for os in linux mac windows; do
-            cat > releases/$os/simple/index.html << 'EOF'
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Simple Index</title>
-</head>
-<body>
-    <h1>Simple Index</h1>
-    <a href="python/">python</a>
-</body>
-</html>
-EOF
+            cat > releases/$os/simple/index.html << 'HTMLEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Simple Index</title>
+          </head>
+          <body>
+              <h1>Simple Index</h1>
+              <a href="python/">python</a>
+          </body>
+          </html>
+          HTMLEOF
           done
           
           # Generate Linux python/index.html
           if [ -n "$LINUX_FILE" ]; then
-            cat > releases/linux/simple/python/index.html << EOF
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Links for python</title>
-</head>
-<body>
-    <h1>Links for python</h1>
-    <a href="$BASE_URL/$LINUX_FILE#sha256=$LINUX_SHA">$LINUX_FILE</a><br>
-</body>
-</html>
-EOF
+            cat > releases/linux/simple/python/index.html << LINUXEOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Links for python</title>
+          </head>
+          <body>
+              <h1>Links for python</h1>
+              <a href="$BASE_URL/$LINUX_FILE#sha256=$LINUX_SHA">$LINUX_FILE</a><br>
+          </body>
+          </html>
+          LINUXEOF
             echo "✓ Generated releases/linux/simple/python/index.html"
           fi
           
           # Generate macOS python/index.html
           if [ -n "$MAC_FILE" ]; then
-            cat > releases/mac/simple/python/index.html << EOF
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Links for python</title>
-</head>
-<body>
-    <h1>Links for python</h1>
-    <a href="$BASE_URL/$MAC_FILE#sha256=$MAC_SHA">$MAC_FILE</a><br>
-</body>
-</html>
-EOF
+            cat > releases/mac/simple/python/index.html << MACEOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Links for python</title>
+          </head>
+          <body>
+              <h1>Links for python</h1>
+              <a href="$BASE_URL/$MAC_FILE#sha256=$MAC_SHA">$MAC_FILE</a><br>
+          </body>
+          </html>
+          MACEOF
             echo "✓ Generated releases/mac/simple/python/index.html"
           fi
           
           # Generate Windows python/index.html
           if [ -n "$WINDOWS_FILE" ]; then
-            cat > releases/windows/simple/python/index.html << EOF
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Links for python</title>
-</head>
-<body>
-    <h1>Links for python</h1>
-    <a href="$BASE_URL/$WINDOWS_FILE#sha256=$WINDOWS_SHA">$WINDOWS_FILE</a><br>
-</body>
-</html>
-EOF
+            cat > releases/windows/simple/python/index.html << WINEOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Links for python</title>
+          </head>
+          <body>
+              <h1>Links for python</h1>
+              <a href="$BASE_URL/$WINDOWS_FILE#sha256=$WINDOWS_SHA">$WINDOWS_FILE</a><br>
+          </body>
+          </html>
+          WINEOF
             echo "✓ Generated releases/windows/simple/python/index.html"
           fi
 
