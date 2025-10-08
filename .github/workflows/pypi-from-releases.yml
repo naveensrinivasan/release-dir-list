@@ -1,0 +1,186 @@
+name: Generate PyPI Repository from GitHub Releases
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  generate-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Fetch Latest Release Info
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Fetching latest release..."
+          RELEASE_JSON=$(gh api repos/${{ github.repository }}/releases/latest)
+          TAG_NAME=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Latest release: $TAG_NAME"
+
+      - name: Download Release Assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p temp-downloads
+          echo "Downloading assets from ${{ steps.release.outputs.tag_name }}..."
+          gh release download ${{ steps.release.outputs.tag_name }} \
+            --repo ${{ github.repository }} \
+            --dir temp-downloads
+
+      - name: Calculate SHA256 Checksums
+        id: checksums
+        run: |
+          echo "Calculating SHA256 checksums..."
+          
+          # Find files by OS
+          LINUX_FILE=$(find temp-downloads -name "*.tar.xz" | head -1)
+          MAC_FILE=$(find temp-downloads -name "*.pkg" | head -1)
+          WINDOWS_FILE=$(find temp-downloads -name "*.exe" | head -1)
+          
+          if [ -f "$LINUX_FILE" ]; then
+            LINUX_SHA=$(sha256sum "$LINUX_FILE" | cut -d' ' -f1)
+            LINUX_NAME=$(basename "$LINUX_FILE")
+            echo "linux_file=$LINUX_NAME" >> $GITHUB_OUTPUT
+            echo "linux_sha=$LINUX_SHA" >> $GITHUB_OUTPUT
+            echo "Linux: $LINUX_NAME ($LINUX_SHA)"
+          fi
+          
+          if [ -f "$MAC_FILE" ]; then
+            MAC_SHA=$(sha256sum "$MAC_FILE" | cut -d' ' -f1)
+            MAC_NAME=$(basename "$MAC_FILE")
+            echo "mac_file=$MAC_NAME" >> $GITHUB_OUTPUT
+            echo "mac_sha=$MAC_SHA" >> $GITHUB_OUTPUT
+            echo "macOS: $MAC_NAME ($MAC_SHA)"
+          fi
+          
+          if [ -f "$WINDOWS_FILE" ]; then
+            WINDOWS_SHA=$(sha256sum "$WINDOWS_FILE" | cut -d' ' -f1)
+            WINDOWS_NAME=$(basename "$WINDOWS_FILE")
+            echo "windows_file=$WINDOWS_NAME" >> $GITHUB_OUTPUT
+            echo "windows_sha=$WINDOWS_SHA" >> $GITHUB_OUTPUT
+            echo "Windows: $WINDOWS_NAME ($WINDOWS_SHA)"
+          fi
+
+      - name: Generate PyPI Simple HTML Structure
+        env:
+          TAG_NAME: ${{ steps.release.outputs.tag_name }}
+          LINUX_FILE: ${{ steps.checksums.outputs.linux_file }}
+          LINUX_SHA: ${{ steps.checksums.outputs.linux_sha }}
+          MAC_FILE: ${{ steps.checksums.outputs.mac_file }}
+          MAC_SHA: ${{ steps.checksums.outputs.mac_sha }}
+          WINDOWS_FILE: ${{ steps.checksums.outputs.windows_file }}
+          WINDOWS_SHA: ${{ steps.checksums.outputs.windows_sha }}
+        run: |
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG_NAME"
+          
+          echo "Generating PyPI Simple repository structure..."
+          
+          # Create directory structure
+          mkdir -p releases/linux/simple/python
+          mkdir -p releases/mac/simple/python
+          mkdir -p releases/windows/simple/python
+          
+          # Generate root index.html for each OS
+          for os in linux mac windows; do
+            cat > releases/$os/simple/index.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Index</title>
+</head>
+<body>
+    <h1>Simple Index</h1>
+    <a href="python/">python</a>
+</body>
+</html>
+EOF
+          done
+          
+          # Generate Linux python/index.html
+          if [ -n "$LINUX_FILE" ]; then
+            cat > releases/linux/simple/python/index.html << EOF
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Links for python</title>
+</head>
+<body>
+    <h1>Links for python</h1>
+    <a href="$BASE_URL/$LINUX_FILE#sha256=$LINUX_SHA">$LINUX_FILE</a><br>
+</body>
+</html>
+EOF
+            echo "✓ Generated releases/linux/simple/python/index.html"
+          fi
+          
+          # Generate macOS python/index.html
+          if [ -n "$MAC_FILE" ]; then
+            cat > releases/mac/simple/python/index.html << EOF
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Links for python</title>
+</head>
+<body>
+    <h1>Links for python</h1>
+    <a href="$BASE_URL/$MAC_FILE#sha256=$MAC_SHA">$MAC_FILE</a><br>
+</body>
+</html>
+EOF
+            echo "✓ Generated releases/mac/simple/python/index.html"
+          fi
+          
+          # Generate Windows python/index.html
+          if [ -n "$WINDOWS_FILE" ]; then
+            cat > releases/windows/simple/python/index.html << EOF
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Links for python</title>
+</head>
+<body>
+    <h1>Links for python</h1>
+    <a href="$BASE_URL/$WINDOWS_FILE#sha256=$WINDOWS_SHA">$WINDOWS_FILE</a><br>
+</body>
+</html>
+EOF
+            echo "✓ Generated releases/windows/simple/python/index.html"
+          fi
+
+      - name: List Generated Files
+        run: |
+          echo "Generated PyPI Simple repository structure:"
+          find releases/ -type f -name "*.html" | sort
+          echo ""
+          echo "Repository URLs for Nexus:"
+          echo "  Linux:   https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/linux/simple/"
+          echo "  macOS:   https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/mac/simple/"
+          echo "  Windows: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/windows/simple/"
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'releases'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
