@@ -1,0 +1,30 @@
+# Binaries
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+
+# Output and temp directories
+releases/temp-downloads/
+*.tar.gz
+*.tgz
+*.tar.xz
+*.zip
+*.pkg
+*.dmg
+*.msi
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
