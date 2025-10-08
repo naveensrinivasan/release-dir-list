@@ -98,6 +98,49 @@ jobs:
           mkdir -p releases/mac/simple/python
           mkdir -p releases/windows/simple/python
           
+          # Create root index.html
+          cat > releases/index.html << 'ROOTEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>PyPI Simple Repository</title>
+              <style>
+                  body { font-family: Arial, sans-serif; margin: 40px; }
+                  h1 { color: #333; }
+                  .platform { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+                  a { color: #0366d6; text-decoration: none; }
+                  a:hover { text-decoration: underline; }
+                  code { background: #f6f8fa; padding: 2px 6px; border-radius: 3px; }
+              </style>
+          </head>
+          <body>
+              <h1>PyPI Simple Repository</h1>
+              <p>Python package repository with separate indexes for each operating system.</p>
+              
+              <div class="platform">
+                  <h2>🐧 Linux</h2>
+                  <p>Repository URL: <code>https://naveensrinivasan.github.io/release-dir-list/linux/simple/</code></p>
+                  <a href="linux/simple/">Browse Index</a>
+              </div>
+              
+              <div class="platform">
+                  <h2>🍎 macOS</h2>
+                  <p>Repository URL: <code>https://naveensrinivasan.github.io/release-dir-list/mac/simple/</code></p>
+                  <a href="mac/simple/">Browse Index</a>
+              </div>
+              
+              <div class="platform">
+                  <h2>🪟 Windows</h2>
+                  <p>Repository URL: <code>https://naveensrinivasan.github.io/release-dir-list/windows/simple/</code></p>
+                  <a href="windows/simple/">Browse Index</a>
+              </div>
+              
+              <h3>Usage with Nexus</h3>
+              <p>Configure your Nexus proxy repositories to point to the URLs above.</p>
+          </body>
+          </html>
+          ROOTEOF
+          
           # Generate root index.html for each OS
           for os in linux mac windows; do
             cat > releases/$os/simple/index.html << 'HTMLEOF'
