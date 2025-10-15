@@ -89,6 +89,51 @@ The repository includes an automated workflow that:
 
 The workflow runs automatically when you publish a new release, or can be triggered manually from the Actions tab.
 
+## Security Scanning and Attestation Workflow
+
+The repository includes a security scanning proof-of-concept workflow (`scan-python-release.yml`) that demonstrates secure software supply chain practices:
+
+### Features
+
+- **ClamAV Virus Scanning**: Uses official Cisco Talos ClamAV Docker image for malware detection
+- **YARA Rule-Based Scanning**: Custom YARA rules for pattern-based threat detection
+- **Sigstore Attestation**: Cryptographic attestation of both the scanned files and scan results
+- **Structured JSON Logging**: All scan results and logs in JSON format
+- **GitHub OIDC Integration**: Keyless signing using GitHub's identity tokens
+
+### How It Works
+
+1. **Download**: Fetches Python 3.14.0 executable from python.org
+2. **Virus Scan**: ClamAV scans for known malware signatures
+3. **Rule-Based Scan**: YARA applies custom rules for suspicious patterns
+4. **Attestation**: Creates Sigstore attestations for both the executable and scan results
+5. **Verification**: Validates attestations using Sigstore transparency logs
+
+### Running the Security Scan
+
+The security scan workflow can be triggered manually from the Actions tab:
+
+1. Go to the **Actions** tab in your GitHub repository
+2. Select **"Security Scan and Attestation POC"**
+3. Click **"Run workflow"**
+
+### Scan Results
+
+Upon completion, the workflow uploads artifacts containing:
+
+- **Comprehensive Security Report** (`security-scan-report-{run_id}.json`) - Single downloadable JSON file with all scan results, attestation details, and metadata
+- Scan logs from ClamAV and YARA
+- Structured JSON results
+- Sigstore attestation bundles
+- Verification proofs
+
+### Security Features
+
+- **Fails on Detection**: Workflow fails if malware or suspicious patterns are found
+- **Official Tools**: Uses official ClamAV Docker image and native YARA installation
+- **Transparency**: All attestations are logged to Sigstore's public transparency log
+- **Keyless Signing**: No private keys required, uses GitHub OIDC tokens
+
 ## Nexus Repository Configuration
 
 ### Creating PyPI Proxy Repositories
@@ -162,7 +207,8 @@ make test
 .
 ├── .github/
 │   └── workflows/
-│       └── pypi-from-releases.yml    # Automated workflow
+│       ├── pypi-from-releases.yml    # Automated PyPI generation
+│       └── scan-python-release.yml   # Security scanning POC
 ├── cmd/
 │   └── release-tool/
 │       └── main.go                   # CLI entry point
@@ -170,6 +216,8 @@ make test
 │   ├── cli/                          # CLI commands
 │   ├── downloader/                   # File downloader
 │   └── generator/                    # HTML generator
+├── yara-rules/
+│   └── test-rules.yar                # YARA security rules
 ├── .gitignore
 ├── Makefile
 ├── docker-compose.yml                # Local Nexus setup

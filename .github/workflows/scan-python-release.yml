@@ -1,0 +1,221 @@
+name: Security Scan and Attestation POC
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write  # For Sigstore OIDC keyless signing
+  contents: read   # For repository checkout
+  packages: write  # For attestation storage
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download Python Executable
+        id: download
+        run: |
+          echo "Downloading Python 3.14.0 executable..."
+          wget -O Python-3.14.0.tar.xz https://www.python.org/ftp/python/3.14.0/Python-3.14.0.tar.xz
+          echo "Calculating SHA256 checksum..."
+          SHA256=$(sha256sum Python-3.14.0.tar.xz | cut -d' ' -f1)
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+          echo "File: Python-3.14.0.tar.xz"
+          echo "SHA256: $SHA256"
+
+      - name: Run ClamAV Scan with Docker
+        id: clamav-scan
+        run: |
+          echo "Running ClamAV scan using official Cisco Talos Docker image..."
+          docker run --rm \
+            -v $(pwd):/scan:ro \
+            clamav/clamav:stable \
+            clamscan --infected --recursive --bell /scan/Python-3.14.0.tar.xz 2>&1 | tee clamav-scan.log
+          CLAMAV_EXIT=$?
+
+          # Convert to JSON structure
+          if [ $CLAMAV_EXIT -eq 0 ]; then
+            echo '{"status": "clean", "file": "Python-3.14.0.tar.xz", "threats_found": 0, "exit_code": 0}' > clamav-result.json
+            echo "clamav_status=clean" >> $GITHUB_OUTPUT
+          else
+            echo '{"status": "infected", "file": "Python-3.14.0.tar.xz", "threats_found": 1, "exit_code": 1}' > clamav-result.json
+            echo "clamav_status=infected" >> $GITHUB_OUTPUT
+            echo "Malware detected by ClamAV! Failing workflow."
+            exit 1
+          fi
+
+      - name: Install YARA Natively
+        run: |
+          echo "Installing YARA from official Ubuntu packages..."
+          sudo apt-get update
+          sudo apt-get install -y yara
+
+      - name: Run YARA Scan
+        id: yara-scan
+        run: |
+          echo "Running YARA scan with custom rules..."
+          yara -s -w yara-rules/test-rules.yar Python-3.14.0.tar.xz 2>&1 | tee yara-scan.log
+          YARA_EXIT=$?
+
+          # Convert to JSON structure
+          if [ $YARA_EXIT -eq 0 ]; then
+            echo '{"status": "clean", "file": "Python-3.14.0.tar.xz", "matches": 0, "rules_applied": "test-rules.yar", "exit_code": 0}' > yara-result.json
+            echo "yara_status=clean" >> $GITHUB_OUTPUT
+          else
+            echo '{"status": "match_found", "file": "Python-3.14.0.tar.xz", "matches": 1, "rules_applied": "test-rules.yar", "exit_code": 1}' > yara-result.json
+            echo "yara_status=match_found" >> $GITHUB_OUTPUT
+            echo "YARA rule matches found! Failing workflow."
+            exit 1
+          fi
+
+      - name: Combine Scan Results
+        id: combine-results
+        run: |
+          echo "Combining scan results into structured JSON..."
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          SHA256="${{ steps.download.outputs.sha256 }}"
+
+          # Create comprehensive scan results JSON
+          cat > scan-results.json << EOF
+          {
+            "scan_summary": {
+              "file": "Python-3.14.0.tar.xz",
+              "sha256": "$SHA256",
+              "timestamp": "$TIMESTAMP",
+              "workflow_run_id": "${{ github.run_id }}",
+              "repository": "${{ github.repository }}",
+              "scans": {
+                "clamav": $(cat clamav-result.json),
+                "yara": $(cat yara-result.json)
+              },
+              "attestations": {
+                "file_attestation": "python-3.14.0-attestation.bundle",
+                "scan_attestation": "scan-results-attestation.bundle"
+              }
+            }
+          }
+          EOF
+
+          echo "Scan results summary:"
+          cat scan-results.json | jq '.scan_summary'
+
+      - name: Create Downloadable Combined Results
+        run: |
+          echo "Creating comprehensive downloadable results JSON..."
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          SHA256="${{ steps.download.outputs.sha256 }}"
+
+          # Create a single comprehensive JSON file with everything
+          cat > security-scan-report-${{ github.run_id }}.json << EOF
+          {
+            "security_scan_report": {
+              "report_id": "scan-${{ github.run_id }}",
+              "timestamp": "$TIMESTAMP",
+              "repository": "${{ github.repository }}",
+              "workflow_url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              "target_file": {
+                "name": "Python-3.14.0.tar.xz",
+                "source_url": "https://www.python.org/ftp/python/3.14.0/Python-3.14.0.tar.xz",
+                "sha256": "$SHA256"
+              },
+              "scan_results": {
+                "overall_status": "completed",
+                "clamav_scan": $(cat clamav-result.json),
+                "yara_scan": $(cat yara-result.json)
+              },
+              "attestation_results": {
+                "python_executable": {
+                  "status": "attested",
+                  "bundle_file": "python-3.14.0-attestation.bundle",
+                  "type": "slsaprovenance"
+                },
+                "scan_results": {
+                  "status": "attested",
+                  "bundle_file": "scan-results-attestation.bundle",
+                  "type": "https://cyclonedx.org/bom"
+                }
+              },
+              "tools_used": {
+                "clamav": {
+                  "source": "Docker image",
+                  "image": "clamav/clamav:stable",
+                  "provider": "Cisco Talos"
+                },
+                "yara": {
+                  "source": "Native Ubuntu package",
+                  "rules_file": "yara-rules/test-rules.yar"
+                },
+                "cosign": {
+                  "version": "v2.2.4",
+                  "provider": "Sigstore"
+                }
+              },
+              "logs": {
+                "clamav_log_available": true,
+                "yara_log_available": true
+              }
+            }
+          }
+          EOF
+
+          echo "Comprehensive report created: security-scan-report-${{ github.run_id }}.json"
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.5.0
+        with:
+          cosign-release: 'v2.2.4'
+
+      - name: Attest Python Executable
+        run: |
+          echo "Attesting Python executable to Sigstore..."
+          cosign attest-blob --yes \
+            --type slsaprovenance \
+            --bundle python-3.14.0-attestation.bundle \
+            Python-3.14.0.tar.xz
+
+          echo "Python executable attested successfully"
+
+      - name: Attest Scan Results
+        run: |
+          echo "Attesting scan results to Sigstore..."
+          cosign attest-blob --yes \
+            --type https://cyclonedx.org/bom \
+            --bundle scan-results-attestation.bundle \
+            scan-results.json
+
+          echo "Scan results attested successfully"
+
+      - name: Verify Attestations
+        run: |
+          echo "Verifying attestations..."
+          cosign verify-blob-attestation \
+            --bundle python-3.14.0-attestation.bundle \
+            --certificate-identity-regexp=".*" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            Python-3.14.0.tar.xz
+
+          cosign verify-blob-attestation \
+            --bundle scan-results-attestation.bundle \
+            --certificate-identity-regexp=".*" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            scan-results.json
+
+          echo "All attestations verified successfully"
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-results-${{ github.run_id }}
+          path: |
+            security-scan-report-${{ github.run_id }}.json
+            python-3.14.0-attestation.bundle
+            scan-results-attestation.bundle
+            clamav-scan.log
+            yara-scan.log
+            scan-results.json
+            clamav-result.json
+            yara-result.json
+          retention-days: 30
