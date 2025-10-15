@@ -264,12 +264,14 @@ jobs:
           echo "Verifying attestations..."
           cosign verify-blob-attestation \
             --bundle python-3.14.0-attestation.bundle \
+            --type slsaprovenance \
             --certificate-identity-regexp=".*" \
             --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
             Python-3.14.0.tar.xz
 
           cosign verify-blob-attestation \
             --bundle scan-results-attestation.bundle \
+            --type slsaprovenance \
             --certificate-identity-regexp=".*" \
             --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
             scan-results.json
