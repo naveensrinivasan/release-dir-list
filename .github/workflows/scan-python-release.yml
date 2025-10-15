@@ -130,6 +130,7 @@ jobs:
                 "python_executable": {
                   "status": "attested",
                   "bundle_file": "python-3.14.0-attestation.bundle",
+                  "predicate_file": "python-predicate.json",
                   "type": "slsaprovenance"
                 },
                 "scan_results": {
@@ -149,7 +150,7 @@ jobs:
                   "rules_file": "yara-rules/test-rules.yar"
                 },
                 "cosign": {
-                  "version": "v2.2.4",
+                  "version": "v2.4.0",
                   "provider": "Sigstore"
                 }
               },
@@ -166,12 +167,43 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3.5.0
         with:
-          cosign-release: 'v2.2.4'
+          cosign-release: 'v2.4.0'
 
       - name: Attest Python Executable
         run: |
           echo "Attesting Python executable to Sigstore..."
+
+          # Create a minimal SLSA predicate for the Python executable
+          cat > python-predicate.json << EOF
+          {
+            "buildType": "https://github.com/naveensrinivasan/release-dir-list/python-download",
+            "buildDefinition": {
+              "buildType": "https://github.com/naveensrinivasan/release-dir-list/python-download",
+              "externalParameters": {
+                "source": "https://www.python.org/ftp/python/3.14.0/Python-3.14.0.tar.xz"
+              },
+              "internalParameters": {
+                "repository": "${{ github.repository }}",
+                "workflow": "${{ github.workflow }}",
+                "run_id": "${{ github.run_id }}"
+              },
+              "resolvedDependencies": []
+            },
+            "runDetails": {
+              "builder": {
+                "id": "https://github.com/actions/runner"
+              },
+              "metadata": {
+                "invocationId": "${{ github.run_id }}",
+                "startedOn": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+                "finishedOn": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+              }
+            }
+          }
+          EOF
+
           cosign attest-blob --yes \
+            --predicate python-predicate.json \
             --type slsaprovenance \
             --bundle python-3.14.0-attestation.bundle \
             Python-3.14.0.tar.xz
@@ -213,6 +245,7 @@ jobs:
             security-scan-report-${{ github.run_id }}.json
             python-3.14.0-attestation.bundle
             scan-results-attestation.bundle
+            python-predicate.json
             clamav-scan.log
             yara-scan.log
             scan-results.json
