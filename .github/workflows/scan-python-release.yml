@@ -136,7 +136,8 @@ jobs:
                 "scan_results": {
                   "status": "attested",
                   "bundle_file": "scan-results-attestation.bundle",
-                  "type": "https://cyclonedx.org/bom"
+                  "predicate_file": "scan-predicate.json",
+                  "type": "slsaprovenance"
                 }
               },
               "tools_used": {
@@ -215,8 +216,44 @@ jobs:
       - name: Attest Scan Results
         run: |
           echo "Attesting scan results to Sigstore..."
+
+          # Create predicate for scan results
+          cat > scan-predicate.json << EOF
+          {
+            "buildType": "https://github.com/naveensrinivasan/release-dir-list/security-scan",
+            "builder": {
+              "id": "https://github.com/actions/runner"
+            },
+            "buildDefinition": {
+              "externalParameters": {
+                "target": "Python-3.14.0.tar.xz",
+                "source": "https://www.python.org/ftp/python/3.14.0/Python-3.14.0.tar.xz"
+              },
+              "internalParameters": {
+                "repository": "${{ github.repository }}",
+                "workflow": "${{ github.workflow }}",
+                "run_id": "${{ github.run_id }}",
+                "clamav_status": "${{ steps.clamav-scan.outputs.clamav_status }}",
+                "yara_status": "${{ steps.yara-scan.outputs.yara_status }}"
+              },
+              "resolvedDependencies": []
+            },
+            "runDetails": {
+              "builder": {
+                "id": "https://github.com/actions/runner"
+              },
+              "metadata": {
+                "invocationId": "${{ github.run_id }}",
+                "startedOn": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+                "finishedOn": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+              }
+            }
+          }
+          EOF
+
           cosign attest-blob --yes \
-            --type https://cyclonedx.org/bom \
+            --predicate scan-predicate.json \
+            --type slsaprovenance \
             --bundle scan-results-attestation.bundle \
             scan-results.json
 
@@ -248,6 +285,7 @@ jobs:
             python-3.14.0-attestation.bundle
             scan-results-attestation.bundle
             python-predicate.json
+            scan-predicate.json
             clamav-scan.log
             yara-scan.log
             scan-results.json

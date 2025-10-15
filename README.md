@@ -77,7 +77,8 @@ Proof-of-concept security scanning with Sigstore attestation:
 #### Security Scan Outputs
 
 - `security-scan-report-{run_id}.json` - Complete security audit report
-- `python-predicate.json` - SLSA provenance data
+- `python-predicate.json` - SLSA provenance for Python executable
+- `scan-predicate.json` - SLSA provenance for scan results
 - Attestation bundles and verification proofs
 - Scan logs from all security tools
 
