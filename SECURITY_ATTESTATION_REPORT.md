@@ -26,34 +26,27 @@ The whole thing runs in GitHub Actions and spits out artifacts that'll still be 
 
 ```mermaid
 flowchart TD
-    A[Download Python 3.14.0<br/>from python.org] --> B[Calculate SHA256<br/>Checksum]
-    B --> C{ClamAV<br/>Scan}
-    C -->|Clean| D{YARA<br/>Scan}
-    C -->|Malware Found| E[Fail Workflow<br/>No Attestation]
-    D -->|Clean| F[Create SLSA<br/>Provenance]
-    D -->|Rules Match| E
-    F --> G[Sign with<br/>Sigstore]
-    G --> H[Publish to<br/>Rekor Log]
-    H --> I[Generate<br/>Artifacts]
-    I --> J[Security Report<br/>Attestation Bundles<br/>Scan Logs]
+    A[Download Python 3.14.0<br/>from python.org] --> B{ClamAV<br/>Scan}
+    B -->|Clean| C{YARA<br/>Scan}
+    B -->|Malware Found| D[Fail Workflow<br/>No Attestation]
+    C -->|Clean| E[Create SLSA<br/>Provenance]
+    C -->|Rules Match| D
+    E --> F[Sign with<br/>Sigstore]
+    F --> G[Publish to<br/>Rekor Log]
+    G --> H[Generate<br/>Artifacts]
+    H --> I[Security Report<br/>Attestation Bundles<br/>Scan Logs]
     
-    style E fill:#ff6b6b
-    style J fill:#51cf66
+    style D fill:#ff6b6b
+    style I fill:#51cf66
+    style B fill:#ffd43b
     style C fill:#ffd43b
-    style D fill:#ffd43b
 ```
 
 ## How It Works
 
-### Step 1: Secure Download
+### Step 1: Download and Scan
 
-First, we download `Python-3.14.0.tar.xz` straight from `https://www.python.org/ftp/python/3.14.0/` and calculate its SHA256 hash right away. This hash is basically the file's fingerprint - it'll stay the same throughout everything we do.
-
-```
-File: Python-3.14.0.tar.xz
-SHA256: [calculated checksum]
-Source: https://www.python.org/ftp/python/3.14.0/Python-3.14.0.tar.xz
-```
+We download `Python-3.14.0.tar.xz` straight from `https://www.python.org/ftp/python/3.14.0/` and immediately scan it. The SHA256 hash gets calculated and included in reports as a file identifier, but we're not verifying it against anything - the real security comes from the malware scanning.
 
 ### Step 2: ClamAV Virus Scanning
 
@@ -128,11 +121,13 @@ Once everything passes, we create two signed attestations with Sigstore:
 ### Attestation 1: Python Executable Provenance
 
 This one proves:
-- **What**: The exact file (Python-3.14.0.tar.xz with its SHA256)
+- **What**: Python-3.14.0.tar.xz (identified by its SHA256 hash)
 - **Where**: python.org's FTP server
 - **When**: Timestamp of when we grabbed it
 - **Who**: Our GitHub Actions workflow
 - **How**: Automated download via wget
+
+Note: The SHA256 is calculated and included as an identifier, not as a verification step.
 
 **The format (SLSA Provenance):**
 ```json
@@ -157,7 +152,7 @@ This one proves:
 ### Attestation 2: Security Scan Results Provenance
 
 This one proves we actually scanned the thing:
-- **What Got Scanned**: Python-3.14.0.tar.xz (with its checksum)
+- **What Got Scanned**: Python-3.14.0.tar.xz (identified by SHA256)
 - **ClamAV Says**: Clean
 - **YARA Says**: Clean
 - **When**: Scan timestamp
@@ -429,9 +424,9 @@ graph LR
 
 **How the chain works:**
 1. Python.org attests: "We built this at commit X with these dependencies"
-2. We attest: "We verified the hash matches and scanned it clean"
+2. We attest: "We downloaded this file and scanned it clean"
 3. You attest: "We deployed this exact version to production"
-4. Anyone can verify: Check all three attestations in Rekor, linking them by SHA256
+4. Anyone can verify: Check all three attestations in Rekor, linking them by SHA256 hash
 
 This is where software supply chain security is heading - multiple attestations from different parties, all independently verifiable, all building trust through cryptography instead of hope.
 
