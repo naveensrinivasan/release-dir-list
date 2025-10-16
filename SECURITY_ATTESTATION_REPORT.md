@@ -2,25 +2,25 @@
 
 ## The Problem
 
-Look, downloading software from the internet is sketchy, even from places we trust like python.org. Here's what keeps security teams up at night:
+Downloading software from the internet creates real security risks, even from trusted sources like python.org. Organizations face several challenges:
 
-1. **Trust Verification**: How do we actually know the file we downloaded is the same one that left python.org's servers?
-2. **Malware Detection**: How do we make sure we're not about to install something nasty?
-3. **Audit Trail**: When an auditor shows up six months later asking "prove you scanned this," what do we show them?
-4. **Supply Chain Security**: How do we track where our software came from and what happened to it?
+1. **Trust Verification**: Confirming the downloaded file matches what the source provided
+2. **Malware Detection**: Ensuring files are free from malicious code before deployment
+3. **Audit Trail**: Providing cryptographic proof that security scans were performed
+4. **Supply Chain Security**: Tracking software provenance throughout the infrastructure
 
-The old way - manual checks and screenshots in a wiki somewhere - doesn't cut it anymore. We need something automated that actually proves we did what we said we did.
+Manual verification processes don't scale and lack verifiable proof. Automated systems with cryptographic attestation solve both problems.
 
 ## What We Built
 
-We put together an automated pipeline that does the heavy lifting:
+This automated pipeline provides:
 
-1. Grabs Python 3.14.0 from python.org
-2. Runs it through real malware scanners
-3. Creates cryptographic proof that all this actually happened
-4. Posts everything to a public log so anyone can verify it
+1. Download of Python 3.14.0 from python.org
+2. Scanning with production-grade malware detection tools
+3. Cryptographic attestation of scan results
+4. Publication to public transparency logs
 
-The whole thing runs in GitHub Actions and spits out artifacts that'll still be verifiable years from now.
+The system runs in GitHub Actions and generates artifacts with long-term verifiability.
 
 ## Workflow Overview
 
@@ -46,17 +46,17 @@ flowchart TD
 
 ### Step 1: Download and Scan
 
-We download `Python-3.14.0.tar.xz` straight from `https://www.python.org/ftp/python/3.14.0/` and immediately scan it. The SHA256 hash gets calculated and included in reports as a file identifier, but we're not verifying it against anything - the real security comes from the malware scanning.
+The workflow downloads `Python-3.14.0.tar.xz` from `https://www.python.org/ftp/python/3.14.0/` and scans it immediately. SHA256 hash calculation provides file identification in reports and attestations. Security validation comes from malware scanning, not hash verification.
 
 ### Step 2: ClamAV Virus Scanning
 
-We throw the file at ClamAV using their official Docker image (`clamav/clamav:stable`).
+Scanning uses the official ClamAV Docker image (`clamav/clamav:stable`).
 
-**Why ClamAV?**
-- It's the real deal - enterprises actually use this
-- Cisco Talos keeps it updated with new virus definitions daily
-- Open source, so we know what it's doing
-- Free, which doesn't hurt
+**Why ClamAV:**
+- Industry-standard antivirus used in enterprise environments
+- Daily virus definition updates from Cisco Talos
+- Open source with transparent operation
+- No licensing costs
 
 **Here's what we run:**
 ```bash
@@ -66,9 +66,9 @@ docker run --rm \
   clamscan --infected --recursive --bell /scan/Python-3.14.0.tar.xz
 ```
 
-**What the exit codes mean:**
-- 0 = You're good, nothing found
-- 1 = Uh oh, found something bad (and the workflow dies)
+**Exit codes:**
+- 0 = Clean, no threats found
+- 1 = Threats detected (workflow fails immediately)
 
 **What we get back:**
 ```json
@@ -80,16 +80,16 @@ docker run --rm \
 }
 ```
 
-If ClamAV finds anything suspicious, we bail immediately. No attestation, no passing go.
+Detection of threats causes immediate workflow failure. No attestation is generated for files with detected threats.
 
 ### Step 3: YARA Rule-Based Scanning
 
-YARA lets us write custom rules to look for weird patterns that virus scanners might miss. We check for:
+YARA provides pattern-based detection beyond traditional signature matching. Custom rules check for:
 
-- Sketchy executable patterns
+- Suspicious executable patterns
 - Known malware families
 - Backdoor signatures
-- Hidden nasties in compressed files
+- Malicious content in compressed files
 
 **Our custom rules:**
 - `Python_Executable_Check`: Makes sure it looks like legit Python code
@@ -112,7 +112,7 @@ yara -s -w yara-rules/test-rules.yar Python-3.14.0.tar.xz
 }
 ```
 
-Same as ClamAV - any matches and we're done.
+Like ClamAV, any YARA rule matches cause the workflow to fail.
 
 ## What We Attest
 
@@ -120,14 +120,14 @@ Once everything passes, we create two signed attestations with Sigstore:
 
 ### Attestation 1: Python Executable Provenance
 
-This one proves:
-- **What**: Python-3.14.0.tar.xz (identified by its SHA256 hash)
-- **Where**: python.org's FTP server
-- **When**: Timestamp of when we grabbed it
-- **Who**: Our GitHub Actions workflow
+Attestation contents:
+- **What**: Python-3.14.0.tar.xz (identified by SHA256 hash)
+- **Where**: python.org FTP server
+- **When**: Download timestamp
+- **Who**: GitHub Actions workflow
 - **How**: Automated download via wget
 
-Note: The SHA256 is calculated and included as an identifier, not as a verification step.
+The SHA256 serves as a file identifier, not a verification mechanism.
 
 **The format (SLSA Provenance):**
 ```json
@@ -151,13 +151,13 @@ Note: The SHA256 is calculated and included as an identifier, not as a verificat
 
 ### Attestation 2: Security Scan Results Provenance
 
-This one proves we actually scanned the thing:
-- **What Got Scanned**: Python-3.14.0.tar.xz (identified by SHA256)
-- **ClamAV Says**: Clean
-- **YARA Says**: Clean
-- **When**: Scan timestamp
-- **Tools**: ClamAV stable + YARA with our custom rules
-- **Context**: Which repo, which run, all the details
+Scan attestation contents:
+- **Target**: Python-3.14.0.tar.xz (identified by SHA256)
+- **ClamAV Result**: Clean
+- **YARA Result**: Clean
+- **Timestamp**: Scan completion time
+- **Tools**: ClamAV stable + YARA with custom rules
+- **Context**: Repository, workflow run ID, execution details
 
 **Same format:**
 ```json
@@ -183,7 +183,7 @@ This one proves we actually scanned the thing:
 
 ## How Attestations Are Signed
 
-We're using Sigstore - it's a Linux Foundation project that's actually pretty clever:
+Sigstore (Linux Foundation project) provides:
 
 1. **No Keys to Lose**: Uses GitHub OIDC tokens instead of managing private keys
 2. **Public Record**: Everything goes into Rekor (their transparency log at rekor.sigstore.dev)
@@ -199,16 +199,16 @@ cosign attest-blob --yes \
   Python-3.14.0.tar.xz
 ```
 
-**What actually happens:**
-1. GitHub Actions gives us an OIDC token proving who we are
-2. Sigstore's CA hands us a short-lived certificate
-3. We sign the attestation with that cert
-4. Signature gets published to the public transparency log
-5. We get a bundle with everything: signature, cert, timestamp, log entry
+**Signing process:**
+1. GitHub Actions provides OIDC token for identity verification
+2. Sigstore's Fulcio CA issues short-lived certificate
+3. Attestation signing using the certificate
+4. Publication to Rekor transparency log
+5. Bundle generation containing signature, certificate, timestamp, and log entry
 
 ## Verification Process
 
-Here's the cool part - anyone can check our work without trusting us:
+Independent verification without trust requirements:
 
 ```bash
 cosign verify-blob-attestation \
@@ -281,11 +281,11 @@ The security report (`security-scan-report-{run_id}.json`) has everything an aud
 
 ### 1. Compliance and Audit
 
-When auditors show up, you can actually prove:
-- Yeah, we scanned it before deploying
-- We used real industry-standard tools
-- The results are cryptographically verifiable (not just screenshots)
-- There's a complete trail in public logs
+Audit evidence includes:
+- Cryptographic proof of pre-deployment scanning
+- Use of industry-standard security tools
+- Verifiable results (not documentation or screenshots)
+- Complete trail in public transparency logs
 
 ### 2. Supply Chain Security
 
@@ -297,19 +297,19 @@ The attestations give you:
 
 ### 3. Incident Response
 
-When something goes wrong six months later:
-- Pull up the original scan results from the transparency log
-- See exactly which version got deployed
-- Trace it back to where it came from
-- Show you did your homework
+Incident response capabilities:
+- Retrieve original scan results from transparency log
+- Identify deployed version precisely
+- Trace provenance to original source
+- Demonstrate due diligence
 
 ### 4. Zero Trust Architecture
 
-This enables:
-- "Never trust, always verify" (for real, not just on slides)
-- Cryptographic proof instead of policy documents
-- Automated enforcement
-- Transparency without exposing your infrastructure
+Zero trust capabilities:
+- Verification over trust
+- Cryptographic proof instead of policy documentation
+- Automated policy enforcement
+- Transparency without infrastructure exposure
 
 ## Artifacts Available
 
@@ -361,13 +361,13 @@ This proof-of-concept shows you can actually build verifiable security processes
 - Anyone can verify what we're claiming
 - You get a complete audit trail for compliance
 
-The real shift here is from "trust us, we follow the process" to "here's cryptographic proof we did what we said." You're not showing auditors documentation anymore - you're showing them math.
+The approach shifts from process trust to cryptographic verification. Audits rely on verifiable evidence rather than documentation.
 
 ## Future Enhancement: Python.org Native Attestations
 
-Right now we're creating attestations about Python releases we download. But here's where it gets even better: eventually, Python.org will likely start signing their own releases with Sigstore.
+Current implementation creates attestations for downloaded Python releases. Future enhancement: Python.org signing their releases with Sigstore.
 
-**When that happens, we'll have a complete chain of trust:**
+**Complete chain of trust:**
 
 1. **Python.org's Attestation**: "We, the Python Software Foundation, built and released Python-3.14.0.tar.xz"
    - Proves who built it
@@ -384,12 +384,12 @@ Right now we're creating attestations about Python releases we download. But her
    - Links back to both attestations
    - Creates complete audit trail
 
-**Why this matters:**
+**Benefits:**
 
-Instead of just trusting python.org's website, you'd have:
-- Cryptographic proof the file came from Python's official build
-- Independent verification it passed security scanning
-- A complete chain from source code to production
+Multiple layers of cryptographic verification:
+- Proof of official Python build origin
+- Independent security scan verification
+- Complete chain from source to production
 
 **The layered security model:**
 
@@ -428,7 +428,7 @@ graph LR
 3. You attest: "We deployed this exact version to production"
 4. Anyone can verify: Check all three attestations in Rekor, linking them by SHA256 hash
 
-This is where software supply chain security is heading - multiple attestations from different parties, all independently verifiable, all building trust through cryptography instead of hope.
+Software supply chain security evolves toward multiple independent attestations from different parties, each cryptographically verifiable.
 
 ## Technical References
 
