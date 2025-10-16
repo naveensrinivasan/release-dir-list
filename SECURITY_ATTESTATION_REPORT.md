@@ -22,6 +22,27 @@ We put together an automated pipeline that does the heavy lifting:
 
 The whole thing runs in GitHub Actions and spits out artifacts that'll still be verifiable years from now.
 
+## Workflow Overview
+
+```mermaid
+flowchart TD
+    A[Download Python 3.14.0<br/>from python.org] --> B[Calculate SHA256<br/>Checksum]
+    B --> C{ClamAV<br/>Scan}
+    C -->|Clean| D{YARA<br/>Scan}
+    C -->|Malware Found| E[Fail Workflow<br/>No Attestation]
+    D -->|Clean| F[Create SLSA<br/>Provenance]
+    D -->|Rules Match| E
+    F --> G[Sign with<br/>Sigstore]
+    G --> H[Publish to<br/>Rekor Log]
+    H --> I[Generate<br/>Artifacts]
+    I --> J[Security Report<br/>Attestation Bundles<br/>Scan Logs]
+    
+    style E fill:#ff6b6b
+    style J fill:#51cf66
+    style C fill:#ffd43b
+    style D fill:#ffd43b
+```
+
 ## How It Works
 
 ### Step 1: Secure Download
@@ -376,11 +397,41 @@ Instead of just trusting python.org's website, you'd have:
 - A complete chain from source code to production
 
 **The layered security model:**
+
+```mermaid
+graph LR
+    A[Python.org<br/>Build System] -->|SLSA Build<br/>Attestation| B[Python-3.14.0.tar.xz<br/>SHA256: abc123...]
+    B -->|Download & Verify| C[Our Security<br/>Scanning]
+    C -->|ClamAV + YARA| D[Scan Attestation<br/>Status: Clean]
+    D -->|Link via SHA256| E[Deployment<br/>System]
+    E -->|Deployment<br/>Attestation| F[Production<br/>Environment]
+    
+    B -.->|Verifiable in<br/>Rekor| G[Sigstore<br/>Transparency Log]
+    D -.->|Verifiable in<br/>Rekor| G
+    F -.->|Verifiable in<br/>Rekor| G
+    
+    style A fill:#4dabf7
+    style C fill:#ffd43b
+    style E fill:#ff8787
+    style F fill:#51cf66
+    style G fill:#e599f7
+    
+    subgraph "Trust Chain"
+    A
+    C
+    E
+    end
+    
+    subgraph "Public Verification"
+    G
+    end
 ```
-Python.org Signs Release → We Verify & Scan → We Attest Scans → Deploy with Confidence
-         ↓                       ↓                    ↓                    ↓
-   Their proof         Our independent check    Our attestation    Complete chain
-```
+
+**How the chain works:**
+1. Python.org attests: "We built this at commit X with these dependencies"
+2. We attest: "We verified the hash matches and scanned it clean"
+3. You attest: "We deployed this exact version to production"
+4. Anyone can verify: Check all three attestations in Rekor, linking them by SHA256
 
 This is where software supply chain security is heading - multiple attestations from different parties, all independently verifiable, all building trust through cryptography instead of hope.
 
