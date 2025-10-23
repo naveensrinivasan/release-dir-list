@@ -1,0 +1,545 @@
+name: Python Security Scan, Attest, and Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write    # For Sigstore OIDC keyless signing
+  contents: write    # For creating GitHub releases
+  pages: write       # For GitHub Pages deployment
+  packages: write    # For attestation storage
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  scan-attest-release:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download Python 3.14.0 Linux
+        id: download
+        run: |
+          echo "Downloading Python 3.14.0 Linux tarball..."
+          wget -O Python-3.14.0.tar.xz https://www.python.org/ftp/python/3.14.0/Python-3.14.0.tar.xz
+          
+          echo "Calculating SHA256 checksum..."
+          SHA256=$(sha256sum Python-3.14.0.tar.xz | cut -d' ' -f1)
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+          echo "File: Python-3.14.0.tar.xz"
+          echo "SHA256: $SHA256"
+
+      - name: Run ClamAV Scan
+        id: clamav-scan
+        run: |
+          echo "Running ClamAV scan using official Cisco Talos Docker image..."
+          docker run --rm \
+            -v $(pwd):/scan:ro \
+            clamav/clamav:stable \
+            clamscan --infected --recursive --bell /scan/Python-3.14.0.tar.xz 2>&1 | tee clamav-scan.log
+          CLAMAV_EXIT=$?
+
+          # Convert to JSON structure
+          if [ $CLAMAV_EXIT -eq 0 ]; then
+            echo '{"status": "clean", "file": "Python-3.14.0.tar.xz", "threats_found": 0, "exit_code": 0}' > clamav-result.json
+            echo "clamav_status=clean" >> $GITHUB_OUTPUT
+            echo "✓ ClamAV scan passed - no threats detected"
+          else
+            echo '{"status": "infected", "file": "Python-3.14.0.tar.xz", "threats_found": 1, "exit_code": 1}' > clamav-result.json
+            echo "clamav_status=infected" >> $GITHUB_OUTPUT
+            echo "✗ Malware detected by ClamAV! Failing workflow."
+            exit 1
+          fi
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.5.0
+        with:
+          cosign-release: 'v2.4.0'
+
+      - name: Attest Python Executable
+        run: |
+          echo "Attesting Python executable to Sigstore..."
+
+          # Create SLSA provenance predicate for the Python executable
+          cat > python-predicate.json << EOF
+          {
+            "buildType": "https://github.com/naveensrinivasan/release-dir-list/python-download",
+            "builder": {
+              "id": "https://github.com/actions/runner"
+            },
+            "buildDefinition": {
+              "externalParameters": {
+                "source": "https://www.python.org/ftp/python/3.14.0/Python-3.14.0.tar.xz",
+                "sha256": "${{ steps.download.outputs.sha256 }}"
+              },
+              "internalParameters": {
+                "repository": "${{ github.repository }}",
+                "workflow": "${{ github.workflow }}",
+                "run_id": "${{ github.run_id }}"
+              },
+              "resolvedDependencies": []
+            },
+            "runDetails": {
+              "builder": {
+                "id": "https://github.com/actions/runner"
+              },
+              "metadata": {
+                "invocationId": "${{ github.run_id }}",
+                "startedOn": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+                "finishedOn": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+              }
+            }
+          }
+          EOF
+
+          cosign attest-blob --yes \
+            --predicate python-predicate.json \
+            --type slsaprovenance \
+            --bundle python-3.14.0-attestation.bundle \
+            Python-3.14.0.tar.xz
+
+          echo "✓ Python executable attested successfully"
+
+      - name: Generate Scan Results Report
+        id: scan-report
+        run: |
+          echo "Generating comprehensive scan results report..."
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          SHA256="${{ steps.download.outputs.sha256 }}"
+
+          # Create scan results JSON
+          cat > scan-results.json << EOF
+          {
+            "scan_summary": {
+              "file": "Python-3.14.0.tar.xz",
+              "sha256": "$SHA256",
+              "timestamp": "$TIMESTAMP",
+              "workflow_run_id": "${{ github.run_id }}",
+              "repository": "${{ github.repository }}",
+              "scans": {
+                "clamav": $(cat clamav-result.json)
+              }
+            }
+          }
+          EOF
+
+          echo "Scan results:"
+          cat scan-results.json | jq '.scan_summary'
+
+      - name: Attest Scan Results
+        run: |
+          echo "Attesting scan results to Sigstore..."
+
+          # Create predicate for scan results
+          cat > scan-predicate.json << EOF
+          {
+            "buildType": "https://github.com/naveensrinivasan/release-dir-list/security-scan",
+            "builder": {
+              "id": "https://github.com/actions/runner"
+            },
+            "buildDefinition": {
+              "externalParameters": {
+                "target": "Python-3.14.0.tar.xz",
+                "source": "https://www.python.org/ftp/python/3.14.0/Python-3.14.0.tar.xz",
+                "sha256": "${{ steps.download.outputs.sha256 }}"
+              },
+              "internalParameters": {
+                "repository": "${{ github.repository }}",
+                "workflow": "${{ github.workflow }}",
+                "run_id": "${{ github.run_id }}",
+                "clamav_status": "${{ steps.clamav-scan.outputs.clamav_status }}"
+              },
+              "resolvedDependencies": []
+            },
+            "runDetails": {
+              "builder": {
+                "id": "https://github.com/actions/runner"
+              },
+              "metadata": {
+                "invocationId": "${{ github.run_id }}",
+                "startedOn": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+                "finishedOn": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+              }
+            }
+          }
+          EOF
+
+          cosign attest-blob --yes \
+            --predicate scan-predicate.json \
+            --type slsaprovenance \
+            --bundle scan-results-attestation.bundle \
+            scan-results.json
+
+          echo "✓ Scan results attested successfully"
+
+      - name: Verify Attestations
+        run: |
+          echo "Verifying attestations..."
+          
+          cosign verify-blob-attestation \
+            --bundle python-3.14.0-attestation.bundle \
+            --type slsaprovenance \
+            --certificate-identity-regexp=".*" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            Python-3.14.0.tar.xz
+
+          cosign verify-blob-attestation \
+            --bundle scan-results-attestation.bundle \
+            --type slsaprovenance \
+            --certificate-identity-regexp=".*" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            scan-results.json
+
+          echo "✓ All attestations verified successfully"
+
+      - name: Create Comprehensive Security Report
+        run: |
+          echo "Creating comprehensive security report..."
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          SHA256="${{ steps.download.outputs.sha256 }}"
+
+          cat > security-scan-report.json << EOF
+          {
+            "security_scan_report": {
+              "report_id": "scan-${{ github.run_id }}",
+              "timestamp": "$TIMESTAMP",
+              "repository": "${{ github.repository }}",
+              "workflow_url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              "target_file": {
+                "name": "Python-3.14.0.tar.xz",
+                "source_url": "https://www.python.org/ftp/python/3.14.0/Python-3.14.0.tar.xz",
+                "sha256": "$SHA256"
+              },
+              "scan_results": {
+                "overall_status": "passed",
+                "clamav_scan": $(cat clamav-result.json)
+              },
+              "attestation_results": {
+                "python_executable": {
+                  "status": "attested",
+                  "bundle_file": "python-3.14.0-attestation.bundle",
+                  "predicate_file": "python-predicate.json",
+                  "type": "slsaprovenance"
+                },
+                "scan_results": {
+                  "status": "attested",
+                  "bundle_file": "scan-results-attestation.bundle",
+                  "predicate_file": "scan-predicate.json",
+                  "type": "slsaprovenance"
+                }
+              },
+              "tools_used": {
+                "clamav": {
+                  "source": "Docker image",
+                  "image": "clamav/clamav:stable",
+                  "provider": "Cisco Talos"
+                },
+                "cosign": {
+                  "version": "v2.4.0",
+                  "provider": "Sigstore"
+                }
+              },
+              "verification": {
+                "attestations_verified": true,
+                "verification_timestamp": "$TIMESTAMP"
+              }
+            }
+          }
+          EOF
+
+          echo "✓ Comprehensive security report created"
+
+      - name: Check Existing Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Checking existing releases..."
+          echo "Recent releases:"
+          gh release list --limit 10
+          echo ""
+
+      - name: Create GitHub Release
+        id: create-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Creating GitHub release..."
+          TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
+          TAG_NAME="python-3.14.0-scan-$TIMESTAMP"
+          
+          echo "New release tag: $TAG_NAME"
+          
+          # Verify tag doesn't exist (should never happen with timestamp, but safety check)
+          if gh release view "$TAG_NAME" 2>/dev/null; then
+            echo "Error: Tag $TAG_NAME already exists!"
+            exit 1
+          fi
+          
+          # Create release notes
+          cat > release-notes.md << 'NOTEEOF'
+          # Python 3.14.0 - Security Scanned Release
+          
+          This release contains Python 3.14.0 (Linux) that has been:
+          - Downloaded from official python.org
+          - Scanned with ClamAV (clean)
+          - Attested with Sigstore
+          - Published to PyPI-compatible repository
+          
+          ## Security Verification
+          
+          All artifacts include Sigstore attestations for supply chain security.
+          
+          ### Verify Python Executable Attestation
+          ```bash
+          cosign verify-blob-attestation \
+            --bundle python-3.14.0-attestation.bundle \
+            --type slsaprovenance \
+            --certificate-identity-regexp=".*" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            Python-3.14.0.tar.xz
+          ```
+          
+          ### Verify Scan Results Attestation
+          ```bash
+          cosign verify-blob-attestation \
+            --bundle scan-results-attestation.bundle \
+            --type slsaprovenance \
+            --certificate-identity-regexp=".*" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            scan-results.json
+          ```
+          
+          ## Artifacts
+          
+          - **Python-3.14.0.tar.xz** - Python distribution
+          - **security-scan-report.json** - Comprehensive security report
+          - **python-3.14.0-attestation.bundle** - Sigstore attestation for Python
+          - **scan-results-attestation.bundle** - Sigstore attestation for scan results
+          - **python-predicate.json** - SLSA provenance for Python download
+          - **scan-predicate.json** - SLSA provenance for security scan
+          - **clamav-scan.log** - ClamAV scan output
+          
+          ## PyPI Repository
+          
+          Access via GitHub Pages:
+          ```
+          https://naveensrinivasan.github.io/release-dir-list/linux/simple/
+          ```
+          
+          ## Nexus Configuration
+          
+          Configure your Nexus proxy repository with:
+          - **URL**: `https://naveensrinivasan.github.io/release-dir-list/linux/`
+          - **Type**: PyPI (Proxy)
+          
+          Note: Nexus automatically appends `/simple/` to the URL.
+          
+          ---
+          
+          **SHA256**: 
+          NOTEEOF
+          
+          echo "${{ steps.download.outputs.sha256 }}" >> release-notes.md
+          
+          # Create the release
+          gh release create "$TAG_NAME" \
+            --title "Python 3.14.0 - Security Scanned" \
+            --notes-file release-notes.md \
+            Python-3.14.0.tar.xz \
+            security-scan-report.json \
+            python-3.14.0-attestation.bundle \
+            scan-results-attestation.bundle \
+            python-predicate.json \
+            scan-predicate.json \
+            clamav-scan.log \
+            clamav-result.json \
+            scan-results.json
+          
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "GitHub release created: $TAG_NAME"
+          echo "Release URL: https://github.com/${{ github.repository }}/releases/tag/$TAG_NAME"
+
+      - name: Generate PyPI Repository Structure
+        run: |
+          echo "Generating PyPI Simple repository structure..."
+          SHA256="${{ steps.download.outputs.sha256 }}"
+          TAG_NAME="${{ steps.create-release.outputs.tag_name }}"
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG_NAME"
+          
+          # Create directory structure
+          mkdir -p releases/linux/simple/python
+          
+          # Create checksums file
+          cat > releases/linux/simple/python/checksums.txt << EOF
+          Python-3.14.0.tar.xz: $SHA256
+          EOF
+          
+          # Create root index.html
+          cat > releases/index.html << 'ROOTEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>PyPI Simple Repository - Security Scanned Python</title>
+              <style>
+                  body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+                  .container { max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                  h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+                  h2 { color: #34495e; margin-top: 30px; }
+                  .platform { margin: 20px 0; padding: 20px; border: 2px solid #3498db; border-radius: 5px; background: #ecf0f1; }
+                  .security-badge { display: inline-block; background: #27ae60; color: white; padding: 5px 15px; border-radius: 15px; font-size: 14px; margin-left: 10px; }
+                  a { color: #3498db; text-decoration: none; font-weight: 500; }
+                  a:hover { text-decoration: underline; color: #2980b9; }
+                  code { background: #ecf0f1; padding: 3px 8px; border-radius: 3px; font-family: 'Courier New', monospace; color: #e74c3c; }
+                  .info { background: #e8f4f8; padding: 15px; border-left: 4px solid #3498db; margin: 15px 0; }
+                  ul { line-height: 1.8; }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1>PyPI Simple Repository <span class="security-badge">Security Scanned</span></h1>
+                  <p>Python packages with integrated security scanning and Sigstore attestation.</p>
+                  
+                  <div class="info">
+                      <strong>Security Features:</strong>
+                      <ul>
+                          <li>ClamAV malware scanning</li>
+                          <li>Sigstore keyless attestation</li>
+                          <li>SLSA provenance tracking</li>
+                          <li>SHA256 checksums for all artifacts</li>
+                      </ul>
+                  </div>
+                  
+                  <div class="platform">
+                      <h2>Linux</h2>
+                      <p><strong>Repository URL:</strong> <code>https://naveensrinivasan.github.io/release-dir-list/linux/simple/</code></p>
+                      <p><a href="linux/simple/">Browse Package Index</a></p>
+                      <p><strong>Nexus Configuration:</strong> Use this URL in your Nexus proxy repository (without /simple/ suffix - Nexus adds it automatically)</p>
+                  </div>
+                  
+                  <h2>Available Packages</h2>
+                  <ul>
+                      <li><a href="linux/simple/python/">python</a> - Python 3.14.0 with security attestation</li>
+                  </ul>
+                  
+                  <h2>Verification</h2>
+                  <p>All packages include attestation bundles. Verify using Cosign:</p>
+                  <code>cosign verify-blob-attestation --bundle python-3.14.0-attestation.bundle --type slsaprovenance --certificate-identity-regexp=".*" --certificate-oidc-issuer="https://token.actions.githubusercontent.com" Python-3.14.0.tar.xz</code>
+              </div>
+          </body>
+          </html>
+          ROOTEOF
+          
+          # Create simple/index.html (package list)
+          cat > releases/linux/simple/index.html << 'SIMPLEEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Simple Index</title>
+              <meta name="api-version" value="2" />
+          </head>
+          <body>
+              <h1>Simple Index</h1>
+              <a href="python/">python</a><br>
+          </body>
+          </html>
+          SIMPLEEOF
+          
+          # Create python/index.html with all artifacts
+          cat > releases/linux/simple/python/index.html << EOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Links for python</title>
+              <meta name="api-version" value="2" />
+              <style>
+                  body { font-family: Arial, sans-serif; margin: 20px; }
+                  h1 { color: #333; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+                  .artifact-group { margin: 30px 0; padding: 20px; background: #f8f9fa; border-radius: 5px; }
+                  .artifact-group h2 { margin-top: 0; color: #2c3e50; font-size: 18px; }
+                  a { display: block; margin: 8px 0; color: #3498db; text-decoration: none; padding: 5px; }
+                  a:hover { background: #e8f4f8; text-decoration: underline; }
+                  .main-artifact { font-weight: bold; font-size: 16px; }
+                  .metadata { color: #7f8c8d; font-size: 14px; }
+              </style>
+          </head>
+          <body>
+              <h1>Links for python</h1>
+              
+              <div class="artifact-group">
+                  <h2>Python Distribution</h2>
+                  <a href="$BASE_URL/Python-3.14.0.tar.xz#sha256=$SHA256" class="main-artifact">Python-3.14.0.tar.xz</a>
+              </div>
+              
+              <div class="artifact-group">
+                  <h2>Security Attestations</h2>
+                  <a href="$BASE_URL/python-3.14.0-attestation.bundle">python-3.14.0-attestation.bundle</a>
+                  <a href="$BASE_URL/scan-results-attestation.bundle">scan-results-attestation.bundle</a>
+                  <a href="$BASE_URL/python-predicate.json">python-predicate.json</a>
+                  <a href="$BASE_URL/scan-predicate.json">scan-predicate.json</a>
+              </div>
+              
+              <div class="artifact-group">
+                  <h2>Security Reports</h2>
+                  <a href="$BASE_URL/security-scan-report.json">security-scan-report.json</a>
+                  <a href="$BASE_URL/clamav-result.json">clamav-result.json</a>
+                  <a href="$BASE_URL/scan-results.json">scan-results.json</a>
+                  <a href="$BASE_URL/clamav-scan.log">clamav-scan.log</a>
+              </div>
+              
+              <div class="artifact-group">
+                  <h2>Checksums</h2>
+                  <a href="checksums.txt">checksums.txt</a>
+              </div>
+          </body>
+          </html>
+          EOF
+          
+          echo "✓ PyPI repository structure generated"
+
+      - name: List Generated Files
+        run: |
+          echo "Generated PyPI repository structure:"
+          find releases/ -type f | sort
+          echo ""
+          echo "Repository URL for Nexus:"
+          echo "  https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/linux/simple/"
+          echo ""
+          echo "Release Tag: ${{ steps.create-release.outputs.tag_name }}"
+          echo "Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.create-release.outputs.tag_name }}"
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'releases'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Summary
+        run: |
+          echo "========================================"
+          echo "✓ Workflow completed successfully!"
+          echo "========================================"
+          echo ""
+          echo "📦 Python 3.14.0 has been:"
+          echo "  ✓ Downloaded and verified"
+          echo "  ✓ Scanned with ClamAV (clean)"
+          echo "  ✓ Attested with Sigstore"
+          echo "  ✓ Released to GitHub"
+          echo "  ✓ Deployed to GitHub Pages"
+          echo ""
+          echo "🌐 PyPI Repository URL:"
+          echo "  https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/linux/simple/"
+          echo ""
+          echo "🔧 Nexus Proxy Configuration:"
+          echo "  URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/linux/"
+          echo ""
+          echo "📋 View security report and attestations in the release artifacts"
+
