@@ -97,6 +97,24 @@ jobs:
           mkdir -p releases/linux/simple/python
           mkdir -p releases/mac/simple/python
           mkdir -p releases/windows/simple/python
+          mkdir -p releases/linux/packages
+          mkdir -p releases/mac/packages
+          mkdir -p releases/windows/packages
+          
+          # Download and copy files to GitHub Pages structure for proper proxying
+          echo "Downloading release assets to host on GitHub Pages..."
+          gh release download $TAG_NAME --dir temp-assets
+          
+          # Copy assets to packages directories
+          if [ -n "$LINUX_FILE" ]; then
+            cp "temp-assets/$LINUX_FILE" releases/linux/packages/
+          fi
+          if [ -n "$MAC_FILE" ]; then
+            cp "temp-assets/$MAC_FILE" releases/mac/packages/
+          fi
+          if [ -n "$WINDOWS_FILE" ]; then
+            cp "temp-assets/$WINDOWS_FILE" releases/windows/packages/
+          fi
           
           # Create root index.html
           cat > releases/index.html << 'ROOTEOF'
@@ -167,7 +185,7 @@ jobs:
           </head>
           <body>
               <h1>Links for python</h1>
-              <a href="$BASE_URL/$LINUX_FILE#sha256=$LINUX_SHA">$LINUX_FILE</a><br>
+              <a href="../../packages/$LINUX_FILE#sha256=$LINUX_SHA">$LINUX_FILE</a><br>
           </body>
           </html>
           LINUXEOF
@@ -184,7 +202,7 @@ jobs:
           </head>
           <body>
               <h1>Links for python</h1>
-              <a href="$BASE_URL/$MAC_FILE#sha256=$MAC_SHA">$MAC_FILE</a><br>
+              <a href="../../packages/$MAC_FILE#sha256=$MAC_SHA">$MAC_FILE</a><br>
           </body>
           </html>
           MACEOF
@@ -201,7 +219,7 @@ jobs:
           </head>
           <body>
               <h1>Links for python</h1>
-              <a href="$BASE_URL/$WINDOWS_FILE#sha256=$WINDOWS_SHA">$WINDOWS_FILE</a><br>
+              <a href="../../packages/$WINDOWS_FILE#sha256=$WINDOWS_SHA">$WINDOWS_FILE</a><br>
           </body>
           </html>
           WINEOF
