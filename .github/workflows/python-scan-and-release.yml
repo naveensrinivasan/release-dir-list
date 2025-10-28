@@ -393,40 +393,43 @@ jobs:
             # Extract timestamp from tag
             timestamp=$(echo "$tag" | sed 's/python-3.14.0-scan-//')
             
-            # Copy Python tarball with timestamp
+            # Create subdirectory for this release
+            mkdir -p "packages/${timestamp}"
+            
+            # Copy Python tarball
             if [ -f "temp-$tag/Python-3.14.0.tar.xz" ]; then
-              cp "temp-$tag/Python-3.14.0.tar.xz" "packages/Python-3.14.0-${timestamp}.tar.xz"
+              cp "temp-$tag/Python-3.14.0.tar.xz" "packages/${timestamp}/Python-3.14.0.tar.xz"
               
               # Get SHA256 from the file
               sha=$(sha256sum "temp-$tag/Python-3.14.0.tar.xz" | cut -d' ' -f1)
-              echo "Python-3.14.0-${timestamp}.tar.xz: $sha" >> simple/python/checksums.txt
+              echo "${timestamp}/Python-3.14.0.tar.xz: $sha" >> simple/python/checksums.txt
             fi
             
-            # Copy security artifacts with timestamp
+            # Copy security artifacts to release subdirectory
             [ -f "temp-$tag/python-3.14.0-attestation.bundle" ] && \
-              cp "temp-$tag/python-3.14.0-attestation.bundle" "packages/python-3.14.0-attestation-${timestamp}.bundle"
+              cp "temp-$tag/python-3.14.0-attestation.bundle" "packages/${timestamp}/python-3.14.0-attestation.bundle"
             [ -f "temp-$tag/scan-results-attestation.bundle" ] && \
-              cp "temp-$tag/scan-results-attestation.bundle" "packages/scan-results-attestation-${timestamp}.bundle"
+              cp "temp-$tag/scan-results-attestation.bundle" "packages/${timestamp}/scan-results-attestation.bundle"
             [ -f "temp-$tag/python-predicate.json" ] && \
-              cp "temp-$tag/python-predicate.json" "packages/python-predicate-${timestamp}.json"
+              cp "temp-$tag/python-predicate.json" "packages/${timestamp}/python-predicate.json"
             [ -f "temp-$tag/scan-predicate.json" ] && \
-              cp "temp-$tag/scan-predicate.json" "packages/scan-predicate-${timestamp}.json"
+              cp "temp-$tag/scan-predicate.json" "packages/${timestamp}/scan-predicate.json"
             [ -f "temp-$tag/security-scan-report.json" ] && \
-              cp "temp-$tag/security-scan-report.json" "packages/security-scan-report-${timestamp}.json"
+              cp "temp-$tag/security-scan-report.json" "packages/${timestamp}/security-scan-report.json"
             [ -f "temp-$tag/clamav-scan.log" ] && \
-              cp "temp-$tag/clamav-scan.log" "packages/clamav-scan-${timestamp}.log"
+              cp "temp-$tag/clamav-scan.log" "packages/${timestamp}/clamav-scan.log"
             [ -f "temp-$tag/clamav-result.json" ] && \
-              cp "temp-$tag/clamav-result.json" "packages/clamav-result-${timestamp}.json"
+              cp "temp-$tag/clamav-result.json" "packages/${timestamp}/clamav-result.json"
             [ -f "temp-$tag/scan-results.json" ] && \
-              cp "temp-$tag/scan-results.json" "packages/scan-results-${timestamp}.json"
+              cp "temp-$tag/scan-results.json" "packages/${timestamp}/scan-results.json"
             
             # Clean up temp directory
             rm -rf "temp-$tag"
           done
           
           echo "Previous releases downloaded"
-          echo "Existing Python tarballs:"
-          ls -lh packages/Python-*.tar.xz 2>/dev/null || echo "None yet"
+          echo "Existing release directories:"
+          ls -d packages/*/ 2>/dev/null | sed 's|packages/||' | sed 's|/||' || echo "None yet"
 
       - name: Generate PyPI Repository Structure
         run: |
@@ -438,24 +441,24 @@ jobs:
           
           # Create PyPI-compliant directory structure at root level
           mkdir -p simple/python
-          mkdir -p packages
+          mkdir -p "packages/${TIMESTAMP}"
           
-          # Copy Python tarball with timestamp to support multiple releases
+          # Copy Python tarball to timestamped subdirectory
           echo "Copying Python tarball to GitHub Pages structure..."
-          cp Python-3.14.0.tar.xz "packages/Python-3.14.0-${TIMESTAMP}.tar.xz"
+          cp Python-3.14.0.tar.xz "packages/${TIMESTAMP}/Python-3.14.0.tar.xz"
           
-          # Copy security artifacts with timestamp to packages directory
-          cp security-scan-report.json "packages/security-scan-report-${TIMESTAMP}.json"
-          cp python-3.14.0-attestation.bundle "packages/python-3.14.0-attestation-${TIMESTAMP}.bundle"
-          cp scan-results-attestation.bundle "packages/scan-results-attestation-${TIMESTAMP}.bundle"
-          cp python-predicate.json "packages/python-predicate-${TIMESTAMP}.json"
-          cp scan-predicate.json "packages/scan-predicate-${TIMESTAMP}.json"
-          cp clamav-scan.log "packages/clamav-scan-${TIMESTAMP}.log"
-          cp clamav-result.json "packages/clamav-result-${TIMESTAMP}.json"
-          cp scan-results.json "packages/scan-results-${TIMESTAMP}.json"
+          # Copy security artifacts to release subdirectory
+          cp security-scan-report.json "packages/${TIMESTAMP}/security-scan-report.json"
+          cp python-3.14.0-attestation.bundle "packages/${TIMESTAMP}/python-3.14.0-attestation.bundle"
+          cp scan-results-attestation.bundle "packages/${TIMESTAMP}/scan-results-attestation.bundle"
+          cp python-predicate.json "packages/${TIMESTAMP}/python-predicate.json"
+          cp scan-predicate.json "packages/${TIMESTAMP}/scan-predicate.json"
+          cp clamav-scan.log "packages/${TIMESTAMP}/clamav-scan.log"
+          cp clamav-result.json "packages/${TIMESTAMP}/clamav-result.json"
+          cp scan-results.json "packages/${TIMESTAMP}/scan-results.json"
           
           # Update checksums file (append new release)
-          echo "Python-3.14.0-${TIMESTAMP}.tar.xz: $SHA256" >> simple/python/checksums.txt
+          echo "${TIMESTAMP}/Python-3.14.0.tar.xz: $SHA256" >> simple/python/checksums.txt
           echo "" >> simple/python/checksums.txt
           echo "Release $TAG_NAME artifacts also available at:" >> simple/python/checksums.txt
           echo "$RELEASE_URL" >> simple/python/checksums.txt
@@ -557,17 +560,19 @@ jobs:
               <p style="color: #666;">All Python 3.14.0 releases with security scanning and Sigstore attestation</p>
           HTMLSTART
           
-          # Find all Python tarballs and generate links for each
+          # Find all release subdirectories and generate links for each
           cd packages
-          for tarball in Python-3.14.0-*.tar.xz; do
-            if [ -f "$tarball" ]; then
-              # Extract timestamp from filename
-              ts=$(echo "$tarball" | sed 's/Python-3.14.0-\(.*\)\.tar\.xz/\1/')
+          for release_dir in */; do
+            if [ -d "$release_dir" ]; then
+              # Extract timestamp from directory name (remove trailing slash)
+              ts=$(echo "$release_dir" | sed 's|/||')
               
-              # Calculate SHA256 for this tarball
-              tarball_sha=$(sha256sum "$tarball" | cut -d' ' -f1)
-              
-              cat >> ../simple/python/index.html << RELEASE
+              # Check if Python tarball exists
+              if [ -f "${release_dir}Python-3.14.0.tar.xz" ]; then
+                # Calculate SHA256 for this tarball
+                tarball_sha=$(sha256sum "${release_dir}Python-3.14.0.tar.xz" | cut -d' ' -f1)
+                
+                cat >> ../simple/python/index.html << RELEASE
               
               <div class="release-section">
                   <h2>Release: $ts</h2>
@@ -575,33 +580,34 @@ jobs:
                   
                   <div class="artifact-group">
                       <h3>Python Distribution</h3>
-                      <a href="../../packages/$tarball#sha256=$tarball_sha" class="python-link">$tarball</a>
+                      <a href="../../packages/${ts}/Python-3.14.0.tar.xz#sha256=$tarball_sha" class="python-link">Python-3.14.0.tar.xz</a>
                   </div>
           RELEASE
-              
-              # Add security artifacts if they exist
-              if [ -f "python-3.14.0-attestation-${ts}.bundle" ]; then
-                cat >> ../simple/python/index.html << ARTIFACTS
+                
+                # Add security artifacts if they exist
+                if [ -f "${release_dir}python-3.14.0-attestation.bundle" ]; then
+                  cat >> ../simple/python/index.html << ARTIFACTS
                   
                   <div class="artifact-group">
                       <h3>Security Attestations</h3>
-                      <a href="../../packages/python-3.14.0-attestation-${ts}.bundle">python-3.14.0-attestation-${ts}.bundle</a>
-                      <a href="../../packages/scan-results-attestation-${ts}.bundle">scan-results-attestation-${ts}.bundle</a>
-                      <a href="../../packages/python-predicate-${ts}.json">python-predicate-${ts}.json</a>
-                      <a href="../../packages/scan-predicate-${ts}.json">scan-predicate-${ts}.json</a>
+                      <a href="../../packages/${ts}/python-3.14.0-attestation.bundle">python-3.14.0-attestation.bundle</a>
+                      <a href="../../packages/${ts}/scan-results-attestation.bundle">scan-results-attestation.bundle</a>
+                      <a href="../../packages/${ts}/python-predicate.json">python-predicate.json</a>
+                      <a href="../../packages/${ts}/scan-predicate.json">scan-predicate.json</a>
                   </div>
                   
                   <div class="artifact-group">
                       <h3>Security Reports</h3>
-                      <a href="../../packages/security-scan-report-${ts}.json">security-scan-report-${ts}.json</a>
-                      <a href="../../packages/clamav-result-${ts}.json">clamav-result-${ts}.json</a>
-                      <a href="../../packages/scan-results-${ts}.json">scan-results-${ts}.json</a>
-                      <a href="../../packages/clamav-scan-${ts}.log">clamav-scan-${ts}.log</a>
+                      <a href="../../packages/${ts}/security-scan-report.json">security-scan-report.json</a>
+                      <a href="../../packages/${ts}/clamav-result.json">clamav-result.json</a>
+                      <a href="../../packages/${ts}/scan-results.json">scan-results.json</a>
+                      <a href="../../packages/${ts}/clamav-scan.log">clamav-scan.log</a>
                   </div>
           ARTIFACTS
+                fi
+                
+                echo "              </div>" >> ../simple/python/index.html
               fi
-              
-              echo "              </div>" >> ../simple/python/index.html
             fi
           done
           cd ..
@@ -622,8 +628,12 @@ jobs:
       - name: List Generated Files
         run: |
           echo "Generated PyPI repository structure:"
-          echo "Packages:"
-          ls -lh packages/ | grep -v "^total"
+          echo ""
+          echo "Release Directories:"
+          ls -d packages/*/ | sed 's|packages/||' | sed 's|/||' | while read dir; do
+            echo "  📁 $dir/"
+            ls packages/$dir/ | sed 's/^/     ├─ /'
+          done
           echo ""
           echo "PyPI Simple Index:"
           find simple/ -type f | sort
@@ -631,7 +641,7 @@ jobs:
           echo "PyPI Simple Index URL:"
           echo "  https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/simple/"
           echo ""
-          echo "Nexus PyPI Proxy Configuration:"
+          echo "Nexus Raw Proxy Configuration:"
           echo "  Remote URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
           echo ""
           echo "Release Tag: ${{ steps.create-release.outputs.tag_name }}"

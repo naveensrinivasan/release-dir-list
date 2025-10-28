@@ -73,11 +73,11 @@ echo "Downloading Python 3.14.0 Release"
 echo "=========================================="
 
 # Download Python tarball
-PYTHON_FILE="Python-3.14.0-${LATEST_TIMESTAMP}.tar.xz"
+PYTHON_FILE="Python-3.14.0.tar.xz"
 echo ""
-echo "Downloading: $PYTHON_FILE"
+echo "Downloading: $PYTHON_FILE (from release ${LATEST_TIMESTAMP})"
 $CURL_CMD -# -o "$PYTHON_FILE" \
-  "${NEXUS_URL}/packages/${PYTHON_FILE}"
+  "${NEXUS_URL}/packages/${LATEST_TIMESTAMP}/Python-3.14.0.tar.xz"
 echo "Downloaded: $(ls -lh "$PYTHON_FILE" | awk '{print $5}')"
 
 # Verify SHA256
@@ -95,43 +95,43 @@ echo "=========================================="
 # Download security attestation bundles
 echo ""
 echo "Downloading attestation bundles..."
-$CURL_CMD -s -o "python-3.14.0-attestation-${LATEST_TIMESTAMP}.bundle" \
-  "${NEXUS_URL}/packages/python-3.14.0-attestation-${LATEST_TIMESTAMP}.bundle"
-echo "  ✓ python-3.14.0-attestation-${LATEST_TIMESTAMP}.bundle"
+$CURL_CMD -s -o "python-3.14.0-attestation.bundle" \
+  "${NEXUS_URL}/packages/${LATEST_TIMESTAMP}/python-3.14.0-attestation.bundle"
+echo "  ✓ python-3.14.0-attestation.bundle"
 
-$CURL_CMD -s -o "scan-results-attestation-${LATEST_TIMESTAMP}.bundle" \
-  "${NEXUS_URL}/packages/scan-results-attestation-${LATEST_TIMESTAMP}.bundle"
-echo "  ✓ scan-results-attestation-${LATEST_TIMESTAMP}.bundle"
+$CURL_CMD -s -o "scan-results-attestation.bundle" \
+  "${NEXUS_URL}/packages/${LATEST_TIMESTAMP}/scan-results-attestation.bundle"
+echo "  ✓ scan-results-attestation.bundle"
 
 # Download SLSA predicates
 echo ""
 echo "Downloading SLSA predicate files..."
-$CURL_CMD -s -o "python-predicate-${LATEST_TIMESTAMP}.json" \
-  "${NEXUS_URL}/packages/python-predicate-${LATEST_TIMESTAMP}.json"
-echo "  ✓ python-predicate-${LATEST_TIMESTAMP}.json"
+$CURL_CMD -s -o "python-predicate.json" \
+  "${NEXUS_URL}/packages/${LATEST_TIMESTAMP}/python-predicate.json"
+echo "  ✓ python-predicate.json"
 
-$CURL_CMD -s -o "scan-predicate-${LATEST_TIMESTAMP}.json" \
-  "${NEXUS_URL}/packages/scan-predicate-${LATEST_TIMESTAMP}.json"
-echo "  ✓ scan-predicate-${LATEST_TIMESTAMP}.json"
+$CURL_CMD -s -o "scan-predicate.json" \
+  "${NEXUS_URL}/packages/${LATEST_TIMESTAMP}/scan-predicate.json"
+echo "  ✓ scan-predicate.json"
 
 # Download security reports
 echo ""
 echo "Downloading security scan reports..."
-$CURL_CMD -s -o "security-scan-report-${LATEST_TIMESTAMP}.json" \
-  "${NEXUS_URL}/packages/security-scan-report-${LATEST_TIMESTAMP}.json"
-echo "  ✓ security-scan-report-${LATEST_TIMESTAMP}.json"
+$CURL_CMD -s -o "security-scan-report.json" \
+  "${NEXUS_URL}/packages/${LATEST_TIMESTAMP}/security-scan-report.json"
+echo "  ✓ security-scan-report.json"
 
-$CURL_CMD -s -o "clamav-result-${LATEST_TIMESTAMP}.json" \
-  "${NEXUS_URL}/packages/clamav-result-${LATEST_TIMESTAMP}.json"
-echo "  ✓ clamav-result-${LATEST_TIMESTAMP}.json"
+$CURL_CMD -s -o "clamav-result.json" \
+  "${NEXUS_URL}/packages/${LATEST_TIMESTAMP}/clamav-result.json"
+echo "  ✓ clamav-result.json"
 
-$CURL_CMD -s -o "scan-results-${LATEST_TIMESTAMP}.json" \
-  "${NEXUS_URL}/packages/scan-results-${LATEST_TIMESTAMP}.json"
-echo "  ✓ scan-results-${LATEST_TIMESTAMP}.json"
+$CURL_CMD -s -o "scan-results.json" \
+  "${NEXUS_URL}/packages/${LATEST_TIMESTAMP}/scan-results.json"
+echo "  ✓ scan-results.json"
 
-$CURL_CMD -s -o "clamav-scan-${LATEST_TIMESTAMP}.log" \
-  "${NEXUS_URL}/packages/clamav-scan-${LATEST_TIMESTAMP}.log"
-echo "  ✓ clamav-scan-${LATEST_TIMESTAMP}.log"
+$CURL_CMD -s -o "clamav-scan.log" \
+  "${NEXUS_URL}/packages/${LATEST_TIMESTAMP}/clamav-scan.log"
+echo "  ✓ clamav-scan.log"
 
 echo ""
 echo "=========================================="
@@ -141,7 +141,7 @@ echo "=========================================="
 # Display ClamAV scan results
 echo ""
 echo "ClamAV Scan Status:"
-cat "clamav-result-${LATEST_TIMESTAMP}.json" | grep -E '(status|threats_found)' || cat "clamav-result-${LATEST_TIMESTAMP}.json"
+cat "clamav-result.json" | grep -E '(status|threats_found)' || cat "clamav-result.json"
 
 echo ""
 echo "=========================================="
@@ -153,15 +153,15 @@ if command -v cosign &> /dev/null; then
     echo ""
     echo "Verifying Python artifact attestation..."
     cosign verify-blob "$PYTHON_FILE" \
-      --bundle "python-3.14.0-attestation-${LATEST_TIMESTAMP}.bundle" \
+      --bundle "python-3.14.0-attestation.bundle" \
       --certificate-identity-regexp="https://github.com/naveensrinivasan/release-dir-list" \
       --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
       2>&1 | grep -E "(Verified OK|WARNING|ERROR)" || echo "Verification completed"
     
     echo ""
     echo "Verifying scan results attestation..."
-    cosign verify-blob "scan-results-${LATEST_TIMESTAMP}.json" \
-      --bundle "scan-results-attestation-${LATEST_TIMESTAMP}.bundle" \
+    cosign verify-blob "scan-results.json" \
+      --bundle "scan-results-attestation.bundle" \
       --certificate-identity-regexp="https://github.com/naveensrinivasan/release-dir-list" \
       --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
       2>&1 | grep -E "(Verified OK|WARNING|ERROR)" || echo "Verification completed"
