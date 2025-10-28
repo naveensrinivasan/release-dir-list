@@ -369,11 +369,13 @@ jobs:
         continue-on-error: true
         run: |
           echo "Downloading existing GitHub Pages content..."
-          mkdir -p releases
-          cd releases
-          wget -r -np -nH -R "index.html*" -e robots=off \
+          wget -r -np -nH --cut-dirs=1 -R "index.html*" -e robots=off \
+            -P releases \
             https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/ || true
-          cd ..
+          
+          # List what was downloaded
+          echo "Files downloaded:"
+          find releases -name "*.tar.xz" -o -name "*.bundle" | head -20 || true
           echo "Existing content downloaded (if any)"
 
       - name: Generate PyPI Repository Structure
