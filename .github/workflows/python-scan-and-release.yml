@@ -371,7 +371,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           echo "Downloading artifacts from previous releases..."
-          mkdir -p releases/linux/packages releases/linux/simple/python
+          mkdir -p packages simple/python
           
           CURRENT_TAG="${{ steps.create-release.outputs.tag_name }}"
           echo "Current release tag: $CURRENT_TAG (will be skipped)"
@@ -395,30 +395,30 @@ jobs:
             
             # Copy Python tarball with timestamp
             if [ -f "temp-$tag/Python-3.14.0.tar.xz" ]; then
-              cp "temp-$tag/Python-3.14.0.tar.xz" "releases/linux/packages/Python-3.14.0-${timestamp}.tar.xz"
+              cp "temp-$tag/Python-3.14.0.tar.xz" "packages/Python-3.14.0-${timestamp}.tar.xz"
               
               # Get SHA256 from the file
               sha=$(sha256sum "temp-$tag/Python-3.14.0.tar.xz" | cut -d' ' -f1)
-              echo "Python-3.14.0-${timestamp}.tar.xz: $sha" >> releases/linux/simple/python/checksums.txt
+              echo "Python-3.14.0-${timestamp}.tar.xz: $sha" >> simple/python/checksums.txt
             fi
             
             # Copy security artifacts with timestamp
             [ -f "temp-$tag/python-3.14.0-attestation.bundle" ] && \
-              cp "temp-$tag/python-3.14.0-attestation.bundle" "releases/linux/packages/python-3.14.0-attestation-${timestamp}.bundle"
+              cp "temp-$tag/python-3.14.0-attestation.bundle" "packages/python-3.14.0-attestation-${timestamp}.bundle"
             [ -f "temp-$tag/scan-results-attestation.bundle" ] && \
-              cp "temp-$tag/scan-results-attestation.bundle" "releases/linux/packages/scan-results-attestation-${timestamp}.bundle"
+              cp "temp-$tag/scan-results-attestation.bundle" "packages/scan-results-attestation-${timestamp}.bundle"
             [ -f "temp-$tag/python-predicate.json" ] && \
-              cp "temp-$tag/python-predicate.json" "releases/linux/packages/python-predicate-${timestamp}.json"
+              cp "temp-$tag/python-predicate.json" "packages/python-predicate-${timestamp}.json"
             [ -f "temp-$tag/scan-predicate.json" ] && \
-              cp "temp-$tag/scan-predicate.json" "releases/linux/packages/scan-predicate-${timestamp}.json"
+              cp "temp-$tag/scan-predicate.json" "packages/scan-predicate-${timestamp}.json"
             [ -f "temp-$tag/security-scan-report.json" ] && \
-              cp "temp-$tag/security-scan-report.json" "releases/linux/packages/security-scan-report-${timestamp}.json"
+              cp "temp-$tag/security-scan-report.json" "packages/security-scan-report-${timestamp}.json"
             [ -f "temp-$tag/clamav-scan.log" ] && \
-              cp "temp-$tag/clamav-scan.log" "releases/linux/packages/clamav-scan-${timestamp}.log"
+              cp "temp-$tag/clamav-scan.log" "packages/clamav-scan-${timestamp}.log"
             [ -f "temp-$tag/clamav-result.json" ] && \
-              cp "temp-$tag/clamav-result.json" "releases/linux/packages/clamav-result-${timestamp}.json"
+              cp "temp-$tag/clamav-result.json" "packages/clamav-result-${timestamp}.json"
             [ -f "temp-$tag/scan-results.json" ] && \
-              cp "temp-$tag/scan-results.json" "releases/linux/packages/scan-results-${timestamp}.json"
+              cp "temp-$tag/scan-results.json" "packages/scan-results-${timestamp}.json"
             
             # Clean up temp directory
             rm -rf "temp-$tag"
@@ -426,43 +426,43 @@ jobs:
           
           echo "Previous releases downloaded"
           echo "Existing Python tarballs:"
-          ls -lh releases/linux/packages/Python-*.tar.xz 2>/dev/null || echo "None yet"
+          ls -lh packages/Python-*.tar.xz 2>/dev/null || echo "None yet"
 
       - name: Generate PyPI Repository Structure
         run: |
-          echo "Generating PyPI Simple repository structure..."
+          echo "Generating PyPI-compliant Simple repository structure..."
           SHA256="${{ steps.download.outputs.sha256 }}"
           TAG_NAME="${{ steps.create-release.outputs.tag_name }}"
           RELEASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG_NAME"
           TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
           
-          # Create directory structure
-          mkdir -p releases/linux/simple/python
-          mkdir -p releases/linux/packages
+          # Create PyPI-compliant directory structure at root level
+          mkdir -p simple/python
+          mkdir -p packages
           
           # Copy Python tarball with timestamp to support multiple releases
           echo "Copying Python tarball to GitHub Pages structure..."
-          cp Python-3.14.0.tar.xz "releases/linux/packages/Python-3.14.0-${TIMESTAMP}.tar.xz"
+          cp Python-3.14.0.tar.xz "packages/Python-3.14.0-${TIMESTAMP}.tar.xz"
           
           # Copy security artifacts with timestamp to packages directory
-          cp security-scan-report.json "releases/linux/packages/security-scan-report-${TIMESTAMP}.json"
-          cp python-3.14.0-attestation.bundle "releases/linux/packages/python-3.14.0-attestation-${TIMESTAMP}.bundle"
-          cp scan-results-attestation.bundle "releases/linux/packages/scan-results-attestation-${TIMESTAMP}.bundle"
-          cp python-predicate.json "releases/linux/packages/python-predicate-${TIMESTAMP}.json"
-          cp scan-predicate.json "releases/linux/packages/scan-predicate-${TIMESTAMP}.json"
-          cp clamav-scan.log "releases/linux/packages/clamav-scan-${TIMESTAMP}.log"
-          cp clamav-result.json "releases/linux/packages/clamav-result-${TIMESTAMP}.json"
-          cp scan-results.json "releases/linux/packages/scan-results-${TIMESTAMP}.json"
+          cp security-scan-report.json "packages/security-scan-report-${TIMESTAMP}.json"
+          cp python-3.14.0-attestation.bundle "packages/python-3.14.0-attestation-${TIMESTAMP}.bundle"
+          cp scan-results-attestation.bundle "packages/scan-results-attestation-${TIMESTAMP}.bundle"
+          cp python-predicate.json "packages/python-predicate-${TIMESTAMP}.json"
+          cp scan-predicate.json "packages/scan-predicate-${TIMESTAMP}.json"
+          cp clamav-scan.log "packages/clamav-scan-${TIMESTAMP}.log"
+          cp clamav-result.json "packages/clamav-result-${TIMESTAMP}.json"
+          cp scan-results.json "packages/scan-results-${TIMESTAMP}.json"
           
           # Update checksums file (append new release)
-          echo "Python-3.14.0-${TIMESTAMP}.tar.xz: $SHA256" >> releases/linux/simple/python/checksums.txt
-          echo "" >> releases/linux/simple/python/checksums.txt
-          echo "Release $TAG_NAME artifacts also available at:" >> releases/linux/simple/python/checksums.txt
-          echo "$RELEASE_URL" >> releases/linux/simple/python/checksums.txt
-          echo "" >> releases/linux/simple/python/checksums.txt
+          echo "Python-3.14.0-${TIMESTAMP}.tar.xz: $SHA256" >> simple/python/checksums.txt
+          echo "" >> simple/python/checksums.txt
+          echo "Release $TAG_NAME artifacts also available at:" >> simple/python/checksums.txt
+          echo "$RELEASE_URL" >> simple/python/checksums.txt
+          echo "" >> simple/python/checksums.txt
           
           # Create root index.html
-          cat > releases/index.html << 'ROOTEOF'
+          cat > index.html << 'ROOTEOF'
           <!DOCTYPE html>
           <html>
           <head>
@@ -497,15 +497,16 @@ jobs:
                   </div>
                   
                   <div class="platform">
-                      <h2>Linux</h2>
-                      <p><strong>Repository URL:</strong> <code>https://naveensrinivasan.github.io/release-dir-list/linux/simple/</code></p>
-                      <p><a href="linux/simple/">Browse Package Index</a></p>
-                      <p><strong>Nexus Configuration:</strong> Use this URL in your Nexus proxy repository (without /simple/ suffix - Nexus adds it automatically)</p>
+                      <h2>PyPI-Compliant Repository</h2>
+                      <p><strong>Base URL:</strong> <code>https://naveensrinivasan.github.io/release-dir-list/</code></p>
+                      <p><strong>PyPI Simple Index:</strong> <code>https://naveensrinivasan.github.io/release-dir-list/simple/</code></p>
+                      <p><a href="simple/">Browse Package Index</a></p>
+                      <p><strong>Nexus PyPI Proxy Configuration:</strong> Use base URL (Nexus automatically appends /simple/)</p>
                   </div>
                   
                   <h2>Available Packages</h2>
                   <ul>
-                      <li><a href="linux/simple/python/">python</a> - Python 3.14.0 with security attestation</li>
+                      <li><a href="simple/python/">python</a> - Python 3.14.0 with security attestation</li>
                   </ul>
                   
                   <h2>Verification</h2>
@@ -517,7 +518,7 @@ jobs:
           ROOTEOF
           
           # Create simple/index.html (package list)
-          cat > releases/linux/simple/index.html << 'SIMPLEEOF'
+          cat > simple/index.html << 'SIMPLEEOF'
           <!DOCTYPE html>
           <html>
           <head>
@@ -532,7 +533,7 @@ jobs:
           SIMPLEEOF
           
           # Create python/index.html with ALL artifacts (scan for all existing releases)
-          cat > releases/linux/simple/python/index.html << 'HTMLSTART'
+          cat > simple/python/index.html << 'HTMLSTART'
           <!DOCTYPE html>
           <html>
           <head>
@@ -557,7 +558,7 @@ jobs:
           HTMLSTART
           
           # Find all Python tarballs and generate links for each
-          cd releases/linux/packages
+          cd packages
           for tarball in Python-3.14.0-*.tar.xz; do
             if [ -f "$tarball" ]; then
               # Extract timestamp from filename
@@ -603,10 +604,10 @@ jobs:
               echo "              </div>" >> ../simple/python/index.html
             fi
           done
-          cd ../../..
+          cd ..
           
           # Close the HTML
-          cat >> releases/linux/simple/python/index.html << 'HTMLEND'
+          cat >> simple/python/index.html << 'HTMLEND'
               
               <div class="artifact-group" style="margin-top: 30px;">
                   <h3>All Checksums</h3>
@@ -621,10 +622,17 @@ jobs:
       - name: List Generated Files
         run: |
           echo "Generated PyPI repository structure:"
-          find releases/ -type f | sort
+          echo "Packages:"
+          ls -lh packages/ | grep -v "^total"
           echo ""
-          echo "Repository URL for Nexus:"
-          echo "  https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/linux/simple/"
+          echo "PyPI Simple Index:"
+          find simple/ -type f | sort
+          echo ""
+          echo "PyPI Simple Index URL:"
+          echo "  https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/simple/"
+          echo ""
+          echo "Nexus PyPI Proxy Configuration:"
+          echo "  Remote URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
           echo ""
           echo "Release Tag: ${{ steps.create-release.outputs.tag_name }}"
           echo "Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.create-release.outputs.tag_name }}"
@@ -632,7 +640,7 @@ jobs:
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'releases'
+          path: '.'
 
       - name: Deploy to GitHub Pages
         id: deployment
@@ -649,13 +657,14 @@ jobs:
           echo "  ✓ Scanned with ClamAV (clean)"
           echo "  ✓ Attested with Sigstore"
           echo "  ✓ Released to GitHub"
-          echo "  ✓ Deployed to GitHub Pages"
+          echo "  ✓ Deployed to GitHub Pages (PyPI-compliant)"
           echo ""
-          echo "🌐 PyPI Repository URL:"
-          echo "  https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/linux/simple/"
+          echo "🌐 PyPI Simple Index URL:"
+          echo "  https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/simple/"
           echo ""
-          echo "🔧 Nexus Proxy Configuration:"
-          echo "  URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/linux/"
+          echo "🔧 Nexus PyPI Proxy Configuration:"
+          echo "  Remote URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          echo "  (Nexus automatically appends /simple/)"
           echo ""
           echo "📋 View security report and attestations in the release artifacts"
 
