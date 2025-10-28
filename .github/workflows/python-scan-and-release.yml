@@ -365,18 +365,67 @@ jobs:
           echo "GitHub release created: $TAG_NAME"
           echo "Release URL: https://github.com/${{ github.repository }}/releases/tag/$TAG_NAME"
 
-      - name: Download Existing GitHub Pages Content
+      - name: Download Previous Releases from GitHub
         continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo "Downloading existing GitHub Pages content..."
-          wget -r -np -nH --cut-dirs=1 -R "index.html*" -e robots=off \
-            -P releases \
-            https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/ || true
+          echo "Downloading artifacts from previous releases..."
+          mkdir -p releases/linux/packages releases/linux/simple/python
           
-          # List what was downloaded
-          echo "Files downloaded:"
-          find releases -name "*.tar.xz" -o -name "*.bundle" | head -20 || true
-          echo "Existing content downloaded (if any)"
+          CURRENT_TAG="${{ steps.create-release.outputs.tag_name }}"
+          echo "Current release tag: $CURRENT_TAG (will be skipped)"
+          
+          # Get all security-scanned releases and download their artifacts (except current one)
+          gh release list --limit 10 | grep "python-3.14.0-scan-" | while read title status tag date; do
+            # Skip the current release since we'll add it separately
+            if [ "$tag" = "$CURRENT_TAG" ]; then
+              echo "Skipping current release: $tag"
+              continue
+            fi
+            
+            echo "Processing release: $tag"
+            
+            # Download all artifacts from this release to packages directory
+            gh release download "$tag" --dir "temp-$tag" 2>/dev/null || continue
+            
+            # Extract timestamp from tag
+            timestamp=$(echo "$tag" | sed 's/python-3.14.0-scan-//')
+            
+            # Copy Python tarball with timestamp
+            if [ -f "temp-$tag/Python-3.14.0.tar.xz" ]; then
+              cp "temp-$tag/Python-3.14.0.tar.xz" "releases/linux/packages/Python-3.14.0-${timestamp}.tar.xz"
+              
+              # Get SHA256 from the file
+              sha=$(sha256sum "temp-$tag/Python-3.14.0.tar.xz" | cut -d' ' -f1)
+              echo "Python-3.14.0-${timestamp}.tar.xz: $sha" >> releases/linux/simple/python/checksums.txt
+            fi
+            
+            # Copy security artifacts with timestamp
+            [ -f "temp-$tag/python-3.14.0-attestation.bundle" ] && \
+              cp "temp-$tag/python-3.14.0-attestation.bundle" "releases/linux/packages/python-3.14.0-attestation-${timestamp}.bundle"
+            [ -f "temp-$tag/scan-results-attestation.bundle" ] && \
+              cp "temp-$tag/scan-results-attestation.bundle" "releases/linux/packages/scan-results-attestation-${timestamp}.bundle"
+            [ -f "temp-$tag/python-predicate.json" ] && \
+              cp "temp-$tag/python-predicate.json" "releases/linux/packages/python-predicate-${timestamp}.json"
+            [ -f "temp-$tag/scan-predicate.json" ] && \
+              cp "temp-$tag/scan-predicate.json" "releases/linux/packages/scan-predicate-${timestamp}.json"
+            [ -f "temp-$tag/security-scan-report.json" ] && \
+              cp "temp-$tag/security-scan-report.json" "releases/linux/packages/security-scan-report-${timestamp}.json"
+            [ -f "temp-$tag/clamav-scan.log" ] && \
+              cp "temp-$tag/clamav-scan.log" "releases/linux/packages/clamav-scan-${timestamp}.log"
+            [ -f "temp-$tag/clamav-result.json" ] && \
+              cp "temp-$tag/clamav-result.json" "releases/linux/packages/clamav-result-${timestamp}.json"
+            [ -f "temp-$tag/scan-results.json" ] && \
+              cp "temp-$tag/scan-results.json" "releases/linux/packages/scan-results-${timestamp}.json"
+            
+            # Clean up temp directory
+            rm -rf "temp-$tag"
+          done
+          
+          echo "Previous releases downloaded"
+          echo "Existing Python tarballs:"
+          ls -lh releases/linux/packages/Python-*.tar.xz 2>/dev/null || echo "None yet"
 
       - name: Generate PyPI Repository Structure
         run: |
