@@ -48,8 +48,8 @@ INDEX_HTML=$($CURL_CMD -s "${NEXUS_URL}/simple/python/" || {
     exit 1
 })
 
-# Extract the latest release timestamp
-LATEST_TIMESTAMP=$(echo "$INDEX_HTML" | grep -o 'Python-3.14.0-[0-9]\{8\}-[0-9]\{6\}\.tar\.xz' | head -1 | sed 's/Python-3.14.0-\(.*\)\.tar\.xz/\1/')
+# Extract the latest release timestamp from the <h2>Release: tags
+LATEST_TIMESTAMP=$(echo "$INDEX_HTML" | grep -o '<h2>Release: [0-9]\{8\}-[0-9]\{6\}</h2>' | head -1 | sed 's/<h2>Release: //' | sed 's/<\/h2>//')
 
 if [ -z "$LATEST_TIMESTAMP" ]; then
     echo "ERROR: Could not find any Python releases in the index"
