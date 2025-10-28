@@ -377,7 +377,8 @@ jobs:
           echo "Current release tag: $CURRENT_TAG (will be skipped)"
           
           # Get all security-scanned releases and download their artifacts (except current one)
-          gh release list --limit 10 | grep "python-3.14.0-scan-" | while IFS=$'\t' read -r title status tag date; do
+          # Extract tag (3rd column) using awk since status field can be empty
+          gh release list --limit 10 | grep "python-3.14.0-scan-" | awk -F'\t' '{print $3}' | while read -r tag; do
             # Skip the current release since we'll add it separately
             if [ "$tag" = "$CURRENT_TAG" ]; then
               echo "Skipping current release: $tag"
