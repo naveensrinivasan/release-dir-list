@@ -358,3 +358,24 @@ The workflow runs automatically, but you can trigger it manually:
 
 Each run creates a unique timestamped release to avoid conflicts during testing.
 
+## Download Scripts
+
+Two simple scripts are provided for testing:
+
+### Direct Download (No Nexus Required)
+```bash
+./test-direct-download.sh
+```
+Downloads directly from GitHub Pages and verifies all security artifacts.
+
+### Nexus Proxy Download
+```bash
+./download-via-nexus.sh
+```
+Downloads through a configured Nexus Raw Proxy repository. Requires:
+- Nexus running on localhost:8081
+- Raw proxy repository named `python-security-proxy`
+- Remote URL: `https://naveensrinivasan.com/release-dir-list/`
+
+Both scripts create isolated temporary directories and clean up automatically.
+
