@@ -365,38 +365,49 @@ jobs:
           echo "GitHub release created: $TAG_NAME"
           echo "Release URL: https://github.com/${{ github.repository }}/releases/tag/$TAG_NAME"
 
+      - name: Download Existing GitHub Pages Content
+        continue-on-error: true
+        run: |
+          echo "Downloading existing GitHub Pages content..."
+          mkdir -p releases
+          cd releases
+          wget -r -np -nH -R "index.html*" -e robots=off \
+            https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/ || true
+          cd ..
+          echo "Existing content downloaded (if any)"
+
       - name: Generate PyPI Repository Structure
         run: |
           echo "Generating PyPI Simple repository structure..."
           SHA256="${{ steps.download.outputs.sha256 }}"
           TAG_NAME="${{ steps.create-release.outputs.tag_name }}"
           RELEASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG_NAME"
+          TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
           
           # Create directory structure
           mkdir -p releases/linux/simple/python
           mkdir -p releases/linux/packages
           
-          # Copy Python tarball to be hosted on GitHub Pages
+          # Copy Python tarball with timestamp to support multiple releases
           echo "Copying Python tarball to GitHub Pages structure..."
-          cp Python-3.14.0.tar.xz releases/linux/packages/
+          cp Python-3.14.0.tar.xz "releases/linux/packages/Python-3.14.0-${TIMESTAMP}.tar.xz"
           
-          # Copy security artifacts to packages directory
-          cp security-scan-report.json releases/linux/packages/
-          cp python-3.14.0-attestation.bundle releases/linux/packages/
-          cp scan-results-attestation.bundle releases/linux/packages/
-          cp python-predicate.json releases/linux/packages/
-          cp scan-predicate.json releases/linux/packages/
-          cp clamav-scan.log releases/linux/packages/
-          cp clamav-result.json releases/linux/packages/
-          cp scan-results.json releases/linux/packages/
+          # Copy security artifacts with timestamp to packages directory
+          cp security-scan-report.json "releases/linux/packages/security-scan-report-${TIMESTAMP}.json"
+          cp python-3.14.0-attestation.bundle "releases/linux/packages/python-3.14.0-attestation-${TIMESTAMP}.bundle"
+          cp scan-results-attestation.bundle "releases/linux/packages/scan-results-attestation-${TIMESTAMP}.bundle"
+          cp python-predicate.json "releases/linux/packages/python-predicate-${TIMESTAMP}.json"
+          cp scan-predicate.json "releases/linux/packages/scan-predicate-${TIMESTAMP}.json"
+          cp clamav-scan.log "releases/linux/packages/clamav-scan-${TIMESTAMP}.log"
+          cp clamav-result.json "releases/linux/packages/clamav-result-${TIMESTAMP}.json"
+          cp scan-results.json "releases/linux/packages/scan-results-${TIMESTAMP}.json"
           
-          # Create checksums file
-          cat > releases/linux/simple/python/checksums.txt << EOF
-          Python-3.14.0.tar.xz: $SHA256
-          
-          Release artifacts also available at:
-          $RELEASE_URL
-          EOF
+          # Update checksums file (append new release)
+          echo "Python-3.14.0-${TIMESTAMP}.tar.xz: $SHA256" >> releases/linux/simple/python/checksums.txt
+          echo "" >> releases/linux/simple/python/checksums.txt
+          echo "Release $TAG_NAME artifacts also available at:" >> releases/linux/simple/python/checksums.txt
+          echo "$RELEASE_URL" >> releases/linux/simple/python/checksums.txt
+          echo "" >> releases/linux/simple/python/checksums.txt
           
           # Create root index.html
           cat > releases/index.html << 'ROOTEOF'
@@ -468,8 +479,8 @@ jobs:
           </html>
           SIMPLEEOF
           
-          # Create python/index.html with all artifacts
-          cat > releases/linux/simple/python/index.html << EOF
+          # Create python/index.html with ALL artifacts (scan for all existing releases)
+          cat > releases/linux/simple/python/index.html << 'HTMLSTART'
           <!DOCTYPE html>
           <html>
           <head>
@@ -478,50 +489,80 @@ jobs:
               <style>
                   body { font-family: Arial, sans-serif; margin: 20px; }
                   h1 { color: #333; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
-                  .artifact-group { margin: 30px 0; padding: 20px; background: #f8f9fa; border-radius: 5px; }
-                  .artifact-group h2 { margin-top: 0; color: #2c3e50; font-size: 18px; }
-                  a { display: block; margin: 8px 0; color: #3498db; text-decoration: none; padding: 5px; }
+                  .release-section { margin: 30px 0; padding: 20px; background: #f8f9fa; border-radius: 5px; border-left: 4px solid #3498db; }
+                  .release-section h2 { margin-top: 0; color: #2c3e50; font-size: 18px; }
+                  .release-timestamp { color: #666; font-size: 14px; margin-bottom: 10px; }
+                  a { display: block; margin: 5px 0; color: #3498db; text-decoration: none; padding: 5px; }
                   a:hover { background: #e8f4f8; text-decoration: underline; }
-                  .main-artifact { font-weight: bold; font-size: 16px; }
-                  .metadata { color: #7f8c8d; font-size: 14px; }
+                  .python-link { font-weight: bold; font-size: 16px; }
+                  .artifact-group { margin: 10px 0; }
+                  .artifact-group h3 { margin: 10px 0 5px 0; color: #555; font-size: 14px; }
               </style>
           </head>
           <body>
               <h1>Links for python</h1>
+              <p style="color: #666;">All Python 3.14.0 releases with security scanning and Sigstore attestation</p>
+          HTMLSTART
+          
+          # Find all Python tarballs and generate links for each
+          cd releases/linux/packages
+          for tarball in Python-3.14.0-*.tar.xz; do
+            if [ -f "$tarball" ]; then
+              # Extract timestamp from filename
+              ts=$(echo "$tarball" | sed 's/Python-3.14.0-\(.*\)\.tar\.xz/\1/')
               
-              <div class="artifact-group">
-                  <h2>Python Distribution</h2>
-                  <a href="../../packages/Python-3.14.0.tar.xz#sha256=$SHA256" class="main-artifact">Python-3.14.0.tar.xz</a>
-              </div>
+              # Calculate SHA256 for this tarball
+              tarball_sha=$(sha256sum "$tarball" | cut -d' ' -f1)
               
-              <div class="artifact-group">
-                  <h2>Security Attestations</h2>
-                  <a href="../../packages/python-3.14.0-attestation.bundle">python-3.14.0-attestation.bundle</a>
-                  <a href="../../packages/scan-results-attestation.bundle">scan-results-attestation.bundle</a>
-                  <a href="../../packages/python-predicate.json">python-predicate.json</a>
-                  <a href="../../packages/scan-predicate.json">scan-predicate.json</a>
-              </div>
+              cat >> ../simple/python/index.html << RELEASE
               
-              <div class="artifact-group">
-                  <h2>Security Reports</h2>
-                  <a href="../../packages/security-scan-report.json">security-scan-report.json</a>
-                  <a href="../../packages/clamav-result.json">clamav-result.json</a>
-                  <a href="../../packages/scan-results.json">scan-results.json</a>
-                  <a href="../../packages/clamav-scan.log">clamav-scan.log</a>
-              </div>
+              <div class="release-section">
+                  <h2>Release: $ts</h2>
+                  <div class="release-timestamp">Timestamp: $(echo $ts | sed 's/-/ /')</div>
+                  
+                  <div class="artifact-group">
+                      <h3>Python Distribution</h3>
+                      <a href="../../packages/$tarball#sha256=$tarball_sha" class="python-link">$tarball</a>
+                  </div>
+          RELEASE
               
-              <div class="artifact-group">
-                  <h2>GitHub Release</h2>
-                  <p style="font-size: 14px; color: #666;">All artifacts also available from: <a href="$RELEASE_URL" target="_blank">GitHub Release</a></p>
-              </div>
+              # Add security artifacts if they exist
+              if [ -f "python-3.14.0-attestation-${ts}.bundle" ]; then
+                cat >> ../simple/python/index.html << ARTIFACTS
+                  
+                  <div class="artifact-group">
+                      <h3>Security Attestations</h3>
+                      <a href="../../packages/python-3.14.0-attestation-${ts}.bundle">python-3.14.0-attestation-${ts}.bundle</a>
+                      <a href="../../packages/scan-results-attestation-${ts}.bundle">scan-results-attestation-${ts}.bundle</a>
+                      <a href="../../packages/python-predicate-${ts}.json">python-predicate-${ts}.json</a>
+                      <a href="../../packages/scan-predicate-${ts}.json">scan-predicate-${ts}.json</a>
+                  </div>
+                  
+                  <div class="artifact-group">
+                      <h3>Security Reports</h3>
+                      <a href="../../packages/security-scan-report-${ts}.json">security-scan-report-${ts}.json</a>
+                      <a href="../../packages/clamav-result-${ts}.json">clamav-result-${ts}.json</a>
+                      <a href="../../packages/scan-results-${ts}.json">scan-results-${ts}.json</a>
+                      <a href="../../packages/clamav-scan-${ts}.log">clamav-scan-${ts}.log</a>
+                  </div>
+          ARTIFACTS
+              fi
               
-              <div class="artifact-group">
-                  <h2>Checksums</h2>
+              echo "              </div>" >> ../simple/python/index.html
+            fi
+          done
+          cd ../../..
+          
+          # Close the HTML
+          cat >> releases/linux/simple/python/index.html << 'HTMLEND'
+              
+              <div class="artifact-group" style="margin-top: 30px;">
+                  <h3>All Checksums</h3>
                   <a href="checksums.txt">checksums.txt</a>
               </div>
           </body>
           </html>
-          EOF
+          HTMLEND
           
           echo "✓ PyPI repository structure generated"
 
