@@ -32,7 +32,7 @@ fi
 # Fetch the PyPI index page to get available releases
 echo ""
 echo "Fetching PyPI index via Nexus proxy..."
-INDEX_HTML=$($CURL_CMD -s "${NEXUS_URL}/linux/simple/python/" || {
+INDEX_HTML=$($CURL_CMD -s "${NEXUS_URL}/simple/python/" || {
     echo "ERROR: Could not reach Nexus proxy at ${NEXUS_URL}"
     echo ""
     echo "Make sure:"
@@ -41,6 +41,9 @@ INDEX_HTML=$($CURL_CMD -s "${NEXUS_URL}/linux/simple/python/" || {
     echo "  3. Remote URL is set to: https://naveensrinivasan.github.io/release-dir-list/"
     echo ""
     echo "Configure Nexus with:"
+    echo "  ./setup-nexus-pypi-proxy.sh"
+    echo ""
+    echo "Or run with custom settings:"
     echo "  NEXUS_HOST=localhost:8081 NEXUS_REPO=pypi-proxy $0"
     exit 1
 })
@@ -74,7 +77,7 @@ PYTHON_FILE="Python-3.14.0-${LATEST_TIMESTAMP}.tar.xz"
 echo ""
 echo "Downloading: $PYTHON_FILE"
 $CURL_CMD -# -o "$PYTHON_FILE" \
-  "${NEXUS_URL}/linux/packages/${PYTHON_FILE}"
+  "${NEXUS_URL}/packages/${PYTHON_FILE}"
 echo "Downloaded: $(ls -lh "$PYTHON_FILE" | awk '{print $5}')"
 
 # Verify SHA256
@@ -93,41 +96,41 @@ echo "=========================================="
 echo ""
 echo "Downloading attestation bundles..."
 $CURL_CMD -s -o "python-3.14.0-attestation-${LATEST_TIMESTAMP}.bundle" \
-  "${NEXUS_URL}/linux/packages/python-3.14.0-attestation-${LATEST_TIMESTAMP}.bundle"
+  "${NEXUS_URL}/packages/python-3.14.0-attestation-${LATEST_TIMESTAMP}.bundle"
 echo "  ✓ python-3.14.0-attestation-${LATEST_TIMESTAMP}.bundle"
 
 $CURL_CMD -s -o "scan-results-attestation-${LATEST_TIMESTAMP}.bundle" \
-  "${NEXUS_URL}/linux/packages/scan-results-attestation-${LATEST_TIMESTAMP}.bundle"
+  "${NEXUS_URL}/packages/scan-results-attestation-${LATEST_TIMESTAMP}.bundle"
 echo "  ✓ scan-results-attestation-${LATEST_TIMESTAMP}.bundle"
 
 # Download SLSA predicates
 echo ""
 echo "Downloading SLSA predicate files..."
 $CURL_CMD -s -o "python-predicate-${LATEST_TIMESTAMP}.json" \
-  "${NEXUS_URL}/linux/packages/python-predicate-${LATEST_TIMESTAMP}.json"
+  "${NEXUS_URL}/packages/python-predicate-${LATEST_TIMESTAMP}.json"
 echo "  ✓ python-predicate-${LATEST_TIMESTAMP}.json"
 
 $CURL_CMD -s -o "scan-predicate-${LATEST_TIMESTAMP}.json" \
-  "${NEXUS_URL}/linux/packages/scan-predicate-${LATEST_TIMESTAMP}.json"
+  "${NEXUS_URL}/packages/scan-predicate-${LATEST_TIMESTAMP}.json"
 echo "  ✓ scan-predicate-${LATEST_TIMESTAMP}.json"
 
 # Download security reports
 echo ""
 echo "Downloading security scan reports..."
 $CURL_CMD -s -o "security-scan-report-${LATEST_TIMESTAMP}.json" \
-  "${NEXUS_URL}/linux/packages/security-scan-report-${LATEST_TIMESTAMP}.json"
+  "${NEXUS_URL}/packages/security-scan-report-${LATEST_TIMESTAMP}.json"
 echo "  ✓ security-scan-report-${LATEST_TIMESTAMP}.json"
 
 $CURL_CMD -s -o "clamav-result-${LATEST_TIMESTAMP}.json" \
-  "${NEXUS_URL}/linux/packages/clamav-result-${LATEST_TIMESTAMP}.json"
+  "${NEXUS_URL}/packages/clamav-result-${LATEST_TIMESTAMP}.json"
 echo "  ✓ clamav-result-${LATEST_TIMESTAMP}.json"
 
 $CURL_CMD -s -o "scan-results-${LATEST_TIMESTAMP}.json" \
-  "${NEXUS_URL}/linux/packages/scan-results-${LATEST_TIMESTAMP}.json"
+  "${NEXUS_URL}/packages/scan-results-${LATEST_TIMESTAMP}.json"
 echo "  ✓ scan-results-${LATEST_TIMESTAMP}.json"
 
 $CURL_CMD -s -o "clamav-scan-${LATEST_TIMESTAMP}.log" \
-  "${NEXUS_URL}/linux/packages/clamav-scan-${LATEST_TIMESTAMP}.log"
+  "${NEXUS_URL}/packages/clamav-scan-${LATEST_TIMESTAMP}.log"
 echo "  ✓ clamav-scan-${LATEST_TIMESTAMP}.log"
 
 echo ""

@@ -54,6 +54,20 @@ fi
 
 echo "Repository '${REPO_NAME}' does not exist, creating..."
 
+# Check if repository with this name already exists (different type)
+echo "Checking for existing repository with same name..."
+EXISTING=$(curl -s -u "${NEXUS_USER}:${NEXUS_PASSWORD}" \
+    "http://${NEXUS_HOST}/service/rest/v1/repositories" 2>/dev/null | \
+    grep -o "\"name\":\"${REPO_NAME}\"" || echo "")
+
+if [ -n "$EXISTING" ]; then
+    echo "Repository '${REPO_NAME}' exists, deleting it first..."
+    curl -s -u "${NEXUS_USER}:${NEXUS_PASSWORD}" \
+        -X DELETE \
+        "http://${NEXUS_HOST}/service/rest/v1/repositories/${REPO_NAME}" 2>/dev/null || true
+    sleep 2
+fi
+
 # Create PyPI proxy repository
 echo ""
 echo "Creating PyPI proxy repository..."
@@ -64,10 +78,10 @@ PAYLOAD=$(cat <<EOF
   "online": true,
   "storage": {
     "blobStoreName": "default",
-    "strictContentTypeValidation": true
+    "strictContentTypeValidation": false
   },
   "proxy": {
-    "remoteUrl": "${REMOTE_URL}/",
+    "remoteUrl": "${REMOTE_URL}",
     "contentMaxAge": 1440,
     "metadataMaxAge": 1440
   },
@@ -80,19 +94,20 @@ PAYLOAD=$(cat <<EOF
     "autoBlock": true
   },
   "pypi": {
-    "removeQuarantined": true
+    "removeQuarantined": false
   }
 }
 EOF
 )
 
-HTTP_CODE=$(curl -sf -u "${NEXUS_USER}:${NEXUS_PASSWORD}" \
+HTTP_RESPONSE=$(curl -s -u "${NEXUS_USER}:${NEXUS_PASSWORD}" \
     -H "Content-Type: application/json" \
     -X POST \
     -d "$PAYLOAD" \
-    -w "%{http_code}" \
-    -o /tmp/nexus-create-response.txt \
-    "http://${NEXUS_HOST}/service/rest/v1/repositories/pypi/proxy" 2>&1 || echo "000")
+    -w "\nHTTP_CODE:%{http_code}" \
+    "http://${NEXUS_HOST}/service/rest/v1/repositories/pypi/proxy" 2>&1)
+
+HTTP_CODE=$(echo "$HTTP_RESPONSE" | grep "HTTP_CODE:" | cut -d: -f2)
 
 if [ "$HTTP_CODE" = "201" ]; then
     echo "✓ Repository created successfully!"
@@ -100,7 +115,7 @@ else
     echo "ERROR: Failed to create repository (HTTP ${HTTP_CODE})"
     echo ""
     echo "Response:"
-    cat /tmp/nexus-create-response.txt 2>/dev/null || echo "No response"
+    echo "$HTTP_RESPONSE" | grep -v "HTTP_CODE:"
     echo ""
     echo "Manual setup instructions:"
     echo "  1. Open Nexus UI: http://${NEXUS_HOST}"
@@ -116,16 +131,27 @@ fi
 # Verify repository is accessible
 echo ""
 echo "Verifying repository access..."
-sleep 2
+sleep 3
 
-TEST_URL="http://${NEXUS_HOST}/repository/${REPO_NAME}/linux/simple/python/"
-echo "Testing: ${TEST_URL}"
+TEST_SIMPLE_INDEX="http://${NEXUS_HOST}/repository/${REPO_NAME}/simple/"
+TEST_PYTHON_INDEX="http://${NEXUS_HOST}/repository/${REPO_NAME}/simple/python/"
 
-if curl -sf -u "${NEXUS_USER}:${NEXUS_PASSWORD}" "${TEST_URL}" > /dev/null 2>&1; then
-    echo "✓ Repository is accessible and proxying correctly!"
+echo "Testing PyPI Simple Index: ${TEST_SIMPLE_INDEX}"
+if curl -sf -u "${NEXUS_USER}:${NEXUS_PASSWORD}" "${TEST_SIMPLE_INDEX}" 2>/dev/null | grep -q "python"; then
+    echo "✓ PyPI Simple Index is accessible!"
+    
+    echo ""
+    echo "Testing python package index: ${TEST_PYTHON_INDEX}"
+    if curl -sf -u "${NEXUS_USER}:${NEXUS_PASSWORD}" "${TEST_PYTHON_INDEX}" 2>/dev/null | grep -q "Python-3.14.0"; then
+        RELEASE_COUNT=$(curl -sf -u "${NEXUS_USER}:${NEXUS_PASSWORD}" "${TEST_PYTHON_INDEX}" 2>/dev/null | grep -c "<h2>Release:" || echo "0")
+        echo "✓ Python packages accessible! Found ${RELEASE_COUNT} releases"
+    else
+        echo "⚠ Python package index accessible but no releases found yet (may need to wait)"
+    fi
 else
     echo "WARNING: Repository created but not yet accessible"
     echo "This may take a few moments for Nexus to initialize"
+    echo "Try: curl -u ${NEXUS_USER}:${NEXUS_PASSWORD} ${TEST_SIMPLE_INDEX}"
 fi
 
 echo ""
@@ -133,13 +159,17 @@ echo "=========================================="
 echo "Setup Complete!"
 echo "=========================================="
 echo ""
-echo "Repository URL: http://${NEXUS_HOST}/repository/${REPO_NAME}/"
-echo "PyPI Index: http://${NEXUS_HOST}/repository/${REPO_NAME}/linux/simple/python/"
+echo "PyPI Proxy Repository: ${REPO_NAME}"
+echo "Base URL: http://${NEXUS_HOST}/repository/${REPO_NAME}/"
+echo "Simple Index: http://${NEXUS_HOST}/repository/${REPO_NAME}/simple/"
+echo "Python Index: http://${NEXUS_HOST}/repository/${REPO_NAME}/simple/python/"
 echo ""
-echo "Test the repository:"
-echo "  curl -u ${NEXUS_USER}:${NEXUS_PASSWORD} ${TEST_URL}"
+echo "Remote proxying from: ${REMOTE_URL}"
 echo ""
 echo "Download Python releases via Nexus:"
-echo "  ./download-via-nexus.sh"
+echo "  NEXUS_REPO=${REPO_NAME} ./download-via-nexus.sh"
+echo ""
+echo "Or use pip with Nexus:"
+echo "  pip install --index-url http://${NEXUS_USER}:${NEXUS_PASSWORD}@${NEXUS_HOST}/repository/${REPO_NAME}/simple python==3.14.0"
 echo ""
 
